@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="az">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KSQ hesablayıcısı</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2f5d8a">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="KSQ">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f6f5f1; --card:#ffffff; --ink:#1d1d1b; --muted:#6b6a65; --line:#e3e1da;
+  --accent:#2f5d8a; --accent-soft:#e7eef6; --ok:#2e7d4f; --ok-soft:#e5f2ea;
+  --warn:#b26a00; --warn-soft:#fbf0dc; --bad:#b23b3b; --bad-soft:#f8e4e4;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,sans-serif}
+header{padding:22px 24px 8px;max-width:1200px;margin:0 auto}
+h1{font-size:24px;margin:0 0 4px}
+header p{margin:0;color:var(--muted)}
+nav{max-width:1200px;margin:14px auto 0;padding:0 24px;display:flex;gap:6px;flex-wrap:wrap}
+nav button{border:1px solid var(--line);background:var(--card);padding:9px 16px;border-radius:999px;font:inherit;font-weight:500;cursor:pointer;color:var(--ink)}
+nav button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+main{max-width:1200px;margin:0 auto;padding:16px 24px 60px}
+section.view{display:none}
+section.view.on{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:16px}
+.card h2{font-size:17px;margin:0 0 4px}
+.card .hint{color:var(--muted);font-size:13.5px;margin:0 0 14px}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);font-weight:500}
+input,select,textarea{font:inherit;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:#fff}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+textarea{width:100%;min-height:150px;resize:vertical}
+.btn{border:1px solid var(--accent);background:var(--accent);color:#fff;padding:8px 14px;border-radius:8px;font:inherit;font-weight:500;cursor:pointer}
+.btn.ghost{background:#fff;color:var(--accent)}
+.btn.small{padding:5px 10px;font-size:13px}
+.btn.danger{border-color:var(--bad);color:var(--bad);background:#fff}
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:center;white-space:nowrap}
+th{background:#faf9f6;font-weight:600;font-size:13px;color:#3d3c38;position:sticky;top:0}
+td.name,th.name{text-align:left;position:sticky;left:0;background:inherit;z-index:1}
+tbody tr{background:#fff}
+tbody tr:nth-child(even){background:#fcfbf8}
+td input{width:46px;text-align:center;padding:5px 4px;text-transform:uppercase}
+td input.nm{width:190px;text-align:left;text-transform:none}
+td input.tp{width:150px;text-align:left;text-transform:none}
+td.c{background:var(--ok-soft)!important}
+td.x{background:var(--bad-soft)!important}
+td.p{background:var(--warn-soft)!important}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.kpi .v{font-size:26px;font-weight:700}
+.kpi .l{font-size:13px;color:var(--muted)}
+.bar{height:10px;border-radius:6px;background:#eeece6;overflow:hidden;min-width:120px}
+.bar i{display:block;height:100%;background:var(--accent)}
+.tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600}
+.tag.ok{background:var(--ok-soft);color:var(--ok)}
+.tag.warn{background:var(--warn-soft);color:var(--warn)}
+.tag.bad{background:var(--bad-soft);color:var(--bad)}
+.grade{display:inline-block;width:28px;height:28px;line-height:28px;border-radius:50%;font-weight:700;color:#fff;text-align:center}
+.g2{background:var(--bad)}.g3{background:var(--warn)}.g4{background:var(--accent)}.g5{background:var(--ok)}
+.dist{display:flex;gap:14px;flex-wrap:wrap}
+.dist .d{flex:1;min-width:120px;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1d1d1b;color:#fff;padding:9px 16px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.on{opacity:1}
+pre.out{white-space:pre-wrap;background:#faf9f6;border:1px solid var(--line);border-radius:10px;padding:14px;font:14px/1.6 Inter,system-ui,sans-serif;margin:0}
+.empty{color:var(--muted);padding:18px;text-align:center}
+.legend{font-size:13px;color:var(--muted);margin-top:8px}
+.legend span{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin:0 4px 0 10px}
+
+.scan{display:flex;gap:14px;border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:12px;flex-wrap:wrap;background:#fff}
+.scan img{width:150px;border-radius:6px;border:1px solid var(--line);cursor:zoom-in;align-self:flex-start}
+.scan .body{flex:1;min-width:280px}
+.scan .qs{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.scan .qs label{display:flex;flex-direction:column;align-items:center;font-size:11px;color:var(--muted)}
+.scan .qs input{width:36px;text-align:center;padding:4px;text-transform:uppercase}
+.scan .qs input.fl{border-color:var(--warn);background:var(--warn-soft)}
+.scan.done{opacity:.6}
+.msg{font-size:13px;margin:4px 0}
+.msg.warn{color:var(--warn)} .msg.bad{color:var(--bad)} .msg.ok{color:var(--ok)}
+#zoom{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center;z-index:50;cursor:zoom-out}
+#zoom img{max-width:95vw;max-height:95vh;border-radius:6px}
+.filebtn{position:relative;overflow:hidden;display:inline-block}
+.filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+@media(max-width:640px){header,main,nav{padding-left:14px;padding-right:14px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>KSQ hesablayıcısı</h1>
+  <p>Cavab açarını və şagird cavablarını daxil edin. Bal, faiz, qiymət və sinif təhlili avtomatik hesablanır.</p>
+</header>
+<nav>
+  <button data-v="setup" class="on">1. Açar</button>
+  <button data-v="students">2. Şagirdlər</button>
+  <button data-v="answers">3. Cavablar</button>
+  <button data-v="results">4. Nəticələr</button>
+  <button data-v="analysis">5. Təhlil</button>
+</nav>
+<main>
+
+<!-- 1. SETUP -->
+<section class="view on" id="v-setup">
+  <div class="card">
+    <h2>KSQ haqqında</h2>
+    <div class="row">
+      <label class="f">Sinif<input id="m-class" placeholder="7A" style="width:90px"></label>
+      <label class="f">Fənn<input id="m-subject" placeholder="Ədəbiyyat" style="width:170px"></label>
+      <label class="f">KSQ<input id="m-title" placeholder="KSQ-2" style="width:120px"></label>
+      <label class="f">Tarix<input id="m-date" type="date"></label>
+      <label class="f">Sual sayı<input id="m-n" type="number" min="1" max="60" value="16" style="width:80px"></label>
+      <button class="btn ghost" id="b-apply-n">Tətbiq et</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Cavab açarı</h2>
+    <p class="hint">Test sualları üçün düzgün variantı yazın (A, B, C…). Açıq sual üçün növü “Açıq” seçin və maksimal balı yazın; şagirdin aldığı balı sonra daxil edəcəksiniz. “Mövzu / standart” sütunu təhlildə çətinlik yaradan mövzuları göstərmək üçündür.</p>
+    <div class="tw"><table id="t-key"></table></div>
+    <div class="row" style="margin-top:12px">
+      <label class="f" style="flex:1;min-width:260px">Test açarını bir sətirlə daxil edin (məs. ABDCA BBEAC)
+        <input id="key-quick" placeholder="ABDCABBEAC"></label>
+      <button class="btn ghost" id="b-key-quick">Açara yaz</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Qiymət şkalası (faizlə)</h2>
+    <p class="hint">Qiymət şkalanız fərqlidirsə, aşağı sərhədləri dəyişin.</p>
+    <div class="row">
+      <label class="f">“3” üçün, % ≥<input id="s3" type="number" value="31" style="width:80px"></label>
+      <label class="f">“4” üçün, % ≥<input id="s4" type="number" value="61" style="width:80px"></label>
+      <label class="f">“5” üçün, % ≥<input id="s5" type="number" value="81" style="width:80px"></label>
+      <label class="f">Çətin sual həddi, % &lt;<input id="hard" type="number" value="50" style="width:80px"></label>
+    </div>
+  </div>
+</section>
+
+<!-- 2. STUDENTS -->
+<section class="view" id="v-students">
+  <div class="card">
+    <h2>Şagird siyahısı</h2>
+    <p class="hint">Hər sətirə bir şagird yazın və ya siyahını Word/Excel-dən yapışdırın.</p>
+    <textarea id="st-list" placeholder="Əliyev Murad&#10;Həsənova Leyla&#10;..."></textarea>
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="b-st-apply">Siyahını yadda saxla</button>
+      <span id="st-count" class="hint" style="margin:0"></span>
+    </div>
+  </div>
+</section>
+
+<!-- 3. ANSWERS -->
+<section class="view" id="v-answers">
+  <div class="card">
+    <h2>Blankları skan et</h2>
+    <p class="hint">Şagirdlər cavabları “KSQ cavab blankı” (16 sual) üzərində dairəciyi qaraltmaqla işarələyir. Hər blankın şəklini çəkib yükləyin: proqram şagird nömrəsini və cavabları oxuyur. Siyahıdakı nömrə “2. Şagirdlər” bölməsindəki sıra ilə eyni olmalıdır. Blankdakı 1–16 suallar açardakı eyni nömrəli test suallarına yazılır.</p>
+    <p class="hint" style="margin-top:-6px">Şəkil çəkərkən: vərəq düz səthdə olsun, 4 qara kvadratın hamısı kadra düşsün, kölgə salmayın.</p>
+    <a class="btn ghost" href="KSQ_cavab_blanki_16.pdf" target="_blank" style="text-decoration:none;display:inline-block">Cavab blankını aç (çap üçün)</a>
+    <span class="btn filebtn">Şəkil seç / çək<input type="file" id="scan-in" accept="image/*" multiple></span>
+    <button class="btn ghost" id="b-scan-all" style="display:none">Hamısını cədvələ yaz</button>
+    <span id="scan-status" class="hint"></span>
+    <div id="scans"></div>
+  </div>
+  <div class="card">
+    <h2>Şagird cavabları</h2>
+    <p class="hint">Test sualına şagirdin seçdiyi hərfi, açıq suala aldığı balı yazın. Boş xana cavab verilməmiş sayılır. Xanalar dərhal rənglənir. Enter növbəti xanaya keçirir.</p>
+    <div class="tw" style="max-height:70vh"><table id="t-ans"></table></div>
+    <div class="legend">
+      <span style="background:var(--ok-soft)"></span>düzgün
+      <span style="background:var(--bad-soft)"></span>yanlış / 0 bal
+      <span style="background:var(--warn-soft)"></span>qismən bal
+    </div>
+  </div>
+</section>
+
+<!-- 4. RESULTS -->
+<section class="view" id="v-results">
+  <div class="kpis" id="kpis"></div>
+  <div class="card">
+    <h2>Şagirdlər üzrə nəticələr</h2>
+    <div class="row" style="margin:6px 0 12px">
+      <button class="btn ghost small" id="b-copy-res">Cədvəli kopyala (Excel/Word üçün)</button>
+      <button class="btn ghost small" id="b-csv">Excel faylı kimi yüklə (CSV)</button>
+      <label class="f" style="flex-direction:row;align-items:center;gap:6px">Sırala
+        <select id="sort"><option value="list">siyahı üzrə</option><option value="desc">nəticə ↓</option><option value="asc">nəticə ↑</option></select></label>
+    </div>
+    <div class="tw"><table id="t-res"></table></div>
+  </div>
+</section>
+
+<!-- 5. ANALYSIS -->
+<section class="view" id="v-analysis">
+  <div class="card">
+    <h2>Qiymətlərin bölgüsü</h2>
+    <div class="dist" id="dist"></div>
+  </div>
+  <div class="card">
+    <h2>Suallar üzrə həll faizi</h2>
+    <p class="hint">Həll faizi = sual üzrə toplanan bal ÷ mümkün maksimal bal. Çətin sual həddindən aşağı olan suallar işarələnir.</p>
+    <div class="tw"><table id="t-q"></table></div>
+  </div>
+  <div class="card" id="topic-card">
+    <h2>Mövzu / standart üzrə</h2>
+    <div class="tw"><table id="t-topic"></table></div>
+  </div>
+  <div class="card">
+    <h2>Arayış üçün mətn</h2>
+    <p class="hint">Rəqəmlər daxil etdiyiniz məlumatdan hesablanıb. Kopyalayıb hesabata yapışdıra, növbəti təlim üçün təklifləri özünüz tamamlaya bilərsiniz.</p>
+    <pre class="out" id="report"></pre>
+    <div class="row" style="margin-top:10px"><button class="btn ghost small" id="b-copy-rep">Mətni kopyala</button></div>
+  </div>
+  <div class="card">
+    <h2>Məlumatlar</h2>
+    <p class="hint">Məlumatlar yalnız bu brauzerdə saxlanır. Başqa sinif üçün yeni KSQ-yə başlamazdan əvvəl nəticələri kopyalayın.</p>
+    <button class="btn danger small" id="b-reset">Hamısını sil və yenidən başla</button>
+    <span id="reset-confirm" style="display:none;margin-left:8px">Əminsiniz?
+      <button class="btn danger small" id="b-reset-yes">Bəli, sil</button>
+      <button class="btn ghost small" id="b-reset-no">Xeyr</button></span>
+  </div>
+</section>
+</main>
+<div class="toast" id="toast"></div>
+<div id="zoom"><img alt=""></div>
+
+<script>
+const LETTERS = ['A','B','C','D','E'];
+const KEY = 'ksq-hesablayici-v1';
+let S = {
+  meta:{cls:'',subject:'',title:'',date:''},
+  scale:{s3:31,s4:61,s5:81,hard:50},
+  q:[], students:[], ans:{}
+};
+function blankQ(){return {type:'test',key:'',max:1,topic:''};}
+function load(){
+  try{const r=localStorage.getItem(KEY); if(r){S=Object.assign(S,JSON.parse(r));}}catch(e){}
+  if(!S.q.length){for(let i=0;i<16;i++)S.q.push(blankQ());}
+}
+let saveT;
+function save(){clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}},250);}
+function saveNow(){clearTimeout(saveT);try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
+window.addEventListener('pagehide',saveNow);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')saveNow();});
+const $=id=>document.getElementById(id);
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),1600);}
+function fmt(x){return (Math.round(x*10)/10).toString().replace('.',',');}
+
+/* NAV */
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>show(b.dataset.v));
+function show(v){
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+  document.querySelectorAll('section.view').forEach(s=>s.classList.toggle('on',s.id==='v-'+v));
+  if(v==='answers')renderAns();
+  if(v==='results')renderResults();
+  if(v==='analysis')renderAnalysis();
+  window.scrollTo(0,0);
+}
+
+/* SETUP */
+function bindMeta(){
+  const m={cls:'m-class',subject:'m-subject',title:'m-title',date:'m-date'};
+  for(const k in m){$(m[k]).value=S.meta[k]||'';$(m[k]).oninput=e=>{S.meta[k]=e.target.value;save();};}
+  ['s3','s4','s5','hard'].forEach(k=>{$(k).value=S.scale[k];$(k).oninput=e=>{S.scale[k]=Number(e.target.value)||0;save();};});
+  $('m-n').value=S.q.length;
+}
+$('b-apply-n').onclick=()=>{
+  let n=Math.max(1,Math.min(60,parseInt($('m-n').value)||1));
+  while(S.q.length<n)S.q.push(blankQ());
+  S.q.length=n; save(); renderKey(); toast('Sual sayı: '+n);
+};
+function renderKey(){
+  let h='<thead><tr><th>Sual</th><th>Növ</th><th>Düzgün cavab</th><th>Maks. bal</th><th style="text-align:left">Mövzu / standart</th></tr></thead><tbody>';
+  S.q.forEach((q,i)=>{
+    h+=`<tr><td><b>${i+1}</b></td>
+    <td><select data-i="${i}" data-f="type"><option value="test"${q.type==='test'?' selected':''}>Test</option><option value="open"${q.type==='open'?' selected':''}>Açıq</option></select></td>
+    <td>${q.type==='test'?`<input data-i="${i}" data-f="key" maxlength="1" value="${esc(q.key)}">`:'<span class="hint">bal ilə</span>'}</td>
+    <td><input data-i="${i}" data-f="max" type="number" min="0" step="0.5" value="${q.max}" style="width:60px;text-transform:none"></td>
+    <td style="text-align:left"><input class="tp" data-i="${i}" data-f="topic" value="${esc(q.topic)}" placeholder="məs. 1.3.5"></td></tr>`;
+  });
+  $('t-key').innerHTML=h+'</tbody>';
+  $('t-key').querySelectorAll('[data-f]').forEach(el=>{
+    const ev=el.tagName==='SELECT'?'change':'input';
+    el.addEventListener(ev,e=>{
+      const i=+el.dataset.i,f=el.dataset.f; let v=el.value;
+      if(f==='key'){v=v.toUpperCase().replace(/[^A-E]/g,'');el.value=v;}
+      if(f==='max')v=Math.max(0,Number(v)||0);
+      S.q[i][f]=v;
+      if(f==='type'){if(v==='test'&&!S.q[i].max)S.q[i].max=1;renderKey();}
+      save();
+    });
+  });
+}
+$('b-key-quick').onclick=()=>{
+  const s=$('key-quick').value.toUpperCase().replace(/[^A-E]/g,'');
+  let k=0;
+  for(let i=0;i<S.q.length&&k<s.length;i++){if(S.q[i].type==='test'){S.q[i].key=s[k++];}}
+  save();renderKey();toast(k+' test sualına açar yazıldı');
+};
+
+/* STUDENTS */
+function renderStudents(){$('st-list').value=S.students.join('\n');$('st-count').textContent=S.students.length?S.students.length+' şagird':'';}
+$('b-st-apply').onclick=()=>{
+  const names=$('st-list').value.split(/\r?\n/).map(s=>s.replace(/^\s*\d+[\.\)]\s*/,'').trim()).filter(Boolean);
+  const old=S.ans; const na={};
+  names.forEach(n=>{if(old[n])na[n]=old[n];});
+  S.students=names; S.ans=na; save(); renderStudents(); toast(names.length+' şagird yadda saxlandı');
+};
+
+/* ANSWERS */
+function cellState(q,v){
+  if(v===undefined||v==='')return '';
+  if(q.type==='test')return v===q.key?'c':'x';
+  const n=Number(v); if(isNaN(n))return '';
+  if(n>=q.max&&q.max>0)return 'c'; if(n<=0)return 'x'; return 'p';
+}
+function renderAns(){
+  if(!S.students.length){$('t-ans').innerHTML='<tr><td class="empty">Əvvəlcə “2. Şagirdlər” bölməsində siyahını daxil edin.</td></tr>';return;}
+  let h='<thead><tr><th class="name">Şagird</th>'+S.q.map((q,i)=>`<th>${i+1}<br><span style="font-weight:400;color:var(--muted)">${q.type==='test'?(q.key||'?'):'≤'+q.max}</span></th>`).join('')+'<th>Bal</th></tr></thead><tbody>';
+  S.students.forEach((n,si)=>{
+    const a=S.ans[n]||[];
+    h+=`<tr><td class="name">${si+1}. ${esc(n)}</td>`+S.q.map((q,qi)=>{
+      const v=a[qi]??''; return `<td class="${cellState(q,v)}"><input data-s="${si}" data-q="${qi}" value="${esc(v)}" ${q.type==='open'?'inputmode="decimal"':''}></td>`;
+    }).join('')+`<td id="sum-${si}"><b>${fmt(scoreOf(n).pts)}</b></td></tr>`;
+  });
+  $('t-ans').innerHTML=h+'</tbody>';
+  const inputs=[...$('t-ans').querySelectorAll('input')];
+  inputs.forEach((el,idx)=>{
+    el.addEventListener('input',()=>{
+      const si=+el.dataset.s,qi=+el.dataset.q,q=S.q[qi],n=S.students[si];
+      let v=el.value.trim();
+      if(q.type==='test'){v=v.toUpperCase().replace(/[^A-E]/g,'').slice(0,1);}
+      else{v=v.replace(',','.').replace(/[^0-9.]/g,''); if(v!==''&&Number(v)>q.max)v=String(q.max);}
+      el.value=v;
+      if(!S.ans[n])S.ans[n]=[];
+      S.ans[n][qi]=v;
+      el.parentElement.className=cellState(q,v);
+      $('sum-'+si).innerHTML='<b>'+fmt(scoreOf(n).pts)+'</b>';
+      save();
+      if(q.type==='test'&&v&&inputs[idx+1])inputs[idx+1].focus();
+    });
+    el.addEventListener('keydown',e=>{if(e.key==='Enter'&&inputs[idx+1]){e.preventDefault();inputs[idx+1].focus();inputs[idx+1].select();}});
+  });
+}
+
+/* CALC */
+function maxTotal(){return S.q.reduce((s,q)=>s+(Number(q.max)||0),0);}
+function qPts(q,v){
+  if(v===undefined||v==='')return 0;
+  if(q.type==='test')return v===q.key?Number(q.max)||0:0;
+  return Math.min(Number(v)||0,Number(q.max)||0);
+}
+function scoreOf(n){
+  const a=S.ans[n]||[]; let pts=0,correct=0,answered=0;
+  S.q.forEach((q,i)=>{const v=a[i];if(v!==undefined&&v!=='')answered++;const p=qPts(q,v);pts+=p;if(q.type==='test'&&v===q.key)correct++;});
+  const mt=maxTotal(); const pct=mt?pts/mt*100:0;
+  return {pts,correct,answered,pct,grade:gradeOf(pct)};
+}
+function gradeOf(p){const r=Math.round(p);const s=S.scale;return r>=s.s5?5:r>=s.s4?4:r>=s.s3?3:2;}
+function hasData(n){const a=S.ans[n];return a&&a.some(v=>v!==undefined&&v!=='');}
+function participants(){return S.students.filter(hasData);}
+function median(arr){if(!arr.length)return 0;const s=[...arr].sort((a,b)=>a-b),m=Math.floor(s.length/2);return s.length%2?s[m]:(s[m-1]+s[m])/2;}
+function classStats(){
+  const ps=participants(); const sc=ps.map(n=>({n,...scoreOf(n)}));
+  const pcts=sc.map(s=>s.pct);
+  const dist={2:0,3:0,4:0,5:0}; sc.forEach(s=>dist[s.grade]++);
+  const k=sc.length;
+  return {sc,k,avg:k?pcts.reduce((a,b)=>a+b,0)/k:0,med:median(pcts),min:k?Math.min(...pcts):0,max:k?Math.max(...pcts):0,
+    dist,mastery:k?(dist[3]+dist[4]+dist[5])/k*100:0,quality:k?(dist[4]+dist[5])/k*100:0,
+    avgGrade:k?sc.reduce((a,s)=>a+s.grade,0)/k:0};
+}
+function qStats(){
+  const ps=participants();
+  return S.q.map((q,i)=>{
+    let got=0,cnt=0,blank=0; const opts={};
+    ps.forEach(n=>{const v=(S.ans[n]||[])[i];if(v===undefined||v===''){blank++;}else if(q.type==='test'){opts[v]=(opts[v]||0)+1;}got+=qPts(q,v);cnt++;});
+    const rate=cnt&&q.max?got/(cnt*q.max)*100:0;
+    let wrong=''; if(q.type==='test'){const w=Object.entries(opts).filter(([k])=>k!==q.key).sort((a,b)=>b[1]-a[1])[0];if(w)wrong=w[0]+' ('+w[1]+')';}
+    return {i,q,rate,blank,opts,wrong,cnt};
+  });
+}
+
+/* RESULTS */
+function renderResults(){
+  const c=classStats();
+  $('kpis').innerHTML=[
+    ['İştirak',c.k+' / '+S.students.length],
+    ['Orta nəticə',fmt(c.avg)+'%'],
+    ['Orta qiymət',fmt(c.avgGrade)],
+    ['Mənimsəmə (3–5)',fmt(c.mastery)+'%'],
+    ['Keyfiyyət (4–5)',fmt(c.quality)+'%'],
+    ['Maks. bal',fmt(maxTotal())]
+  ].map(([l,v])=>`<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('');
+  if(!S.students.length){$('t-res').innerHTML='<tr><td class="empty">Şagird siyahısı boşdur.</td></tr>';return;}
+  let rows=S.students.map((n,i)=>({i,n,has:hasData(n),...scoreOf(n)}));
+  const so=$('sort').value;
+  if(so!=='list')rows.sort((a,b)=>(b.has-a.has)||(so==='desc'?b.pct-a.pct:a.pct-b.pct));
+  const nt=S.q.filter(q=>q.type==='test').length;
+  let h=`<thead><tr><th>№</th><th class="name">Şagird</th>${nt?'<th>Düzgün test</th>':''}<th>Bal</th><th>Faiz</th><th style="min-width:140px"></th><th>Qiymət</th></tr></thead><tbody>`;
+  rows.forEach(r=>{
+    if(!r.has){h+=`<tr><td>${r.i+1}</td><td class="name">${esc(r.n)}</td>${nt?'<td>–</td>':''}<td>–</td><td>–</td><td></td><td><span class="hint">iştirak etməyib</span></td></tr>`;return;}
+    h+=`<tr><td>${r.i+1}</td><td class="name">${esc(r.n)}</td>${nt?`<td>${r.correct} / ${nt}</td>`:''}<td>${fmt(r.pts)} / ${fmt(maxTotal())}</td><td><b>${fmt(r.pct)}%</b></td><td><div class="bar"><i style="width:${Math.min(100,r.pct)}%"></i></div></td><td><span class="grade g${r.grade}">${r.grade}</span></td></tr>`;
+  });
+  $('t-res').innerHTML=h+'</tbody>';
+}
+$('sort').onchange=renderResults;
+$('b-copy-res').onclick=()=>{
+  const nt=S.q.filter(q=>q.type==='test').length;
+  const lines=[['№','Şagird',...(nt?['Düzgün test']:[]),'Bal','Faiz','Qiymət'].join('\t')];
+  S.students.forEach((n,i)=>{const r=scoreOf(n);
+    lines.push(hasData(n)?[i+1,n,...(nt?[r.correct+'/'+nt]:[]),fmt(r.pts),fmt(r.pct)+'%',r.grade].join('\t'):[i+1,n,...(nt?['–']:[]),'–','–','iştirak etməyib'].join('\t'));});
+  copy(lines.join('\n'));
+};
+
+/* ANALYSIS */
+function renderAnalysis(){
+  const c=classStats(), qs=qStats(), hard=S.scale.hard;
+  $('dist').innerHTML=[5,4,3,2].map(g=>{const p=c.k?c.dist[g]/c.k*100:0;return `<div class="d"><span class="grade g${g}">${g}</span> <b style="font-size:20px;margin-left:6px">${c.dist[g]}</b> <span class="hint">şagird · ${fmt(p)}%</span><div class="bar" style="margin-top:8px"><i style="width:${p}%"></i></div></div>`;}).join('');
+  let h='<thead><tr><th>Sual</th><th>Növ</th><th style="text-align:left">Mövzu / standart</th><th>Açar</th><th>Həll faizi</th><th style="min-width:140px"></th><th>Ən çox seçilən yanlış variant</th><th>Cavabsız</th><th>Status</th></tr></thead><tbody>';
+  qs.forEach(s=>{
+    const st=!s.cnt?'':s.rate<hard?'<span class="tag bad">çətin</span>':s.rate<75?'<span class="tag warn">orta</span>':'<span class="tag ok">yaxşı</span>';
+    h+=`<tr><td><b>${s.i+1}</b></td><td>${s.q.type==='test'?'Test':'Açıq'}</td><td style="text-align:left">${esc(s.q.topic||'–')}</td><td>${s.q.type==='test'?(s.q.key||'?'):'≤'+s.q.max}</td><td><b>${fmt(s.rate)}%</b></td><td><div class="bar"><i style="width:${s.rate}%"></i></div></td><td>${s.wrong||'–'}</td><td>${s.blank}</td><td>${st}</td></tr>`;
+  });
+  $('t-q').innerHTML=h+'</tbody>';
+  const topics={};
+  qs.forEach(s=>{const t=(s.q.topic||'').trim();if(!t)return;(topics[t]=topics[t]||[]).push(s);});
+  const tk=Object.keys(topics);
+  $('topic-card').style.display=tk.length?'':'none';
+  if(tk.length){
+    let th='<thead><tr><th style="text-align:left">Mövzu / standart</th><th>Suallar</th><th>Orta həll faizi</th><th style="min-width:140px"></th></tr></thead><tbody>';
+    tk.map(t=>{const arr=topics[t];return {t,arr,r:arr.reduce((a,s)=>a+s.rate,0)/arr.length};}).sort((a,b)=>a.r-b.r).forEach(o=>{
+      th+=`<tr><td style="text-align:left">${esc(o.t)}</td><td>${o.arr.map(s=>s.i+1).join(', ')}</td><td><b>${fmt(o.r)}%</b> ${o.r<hard?'<span class="tag bad">çətin</span>':''}</td><td><div class="bar"><i style="width:${o.r}%"></i></div></td></tr>`;});
+    $('t-topic').innerHTML=th+'</tbody>';
+  }
+  $('report').textContent=reportText(c,qs);
+}
+function reportText(c,qs){
+  const m=S.meta, hard=S.scale.hard;
+  if(!c.k)return 'Hələ şagird cavabı daxil edilməyib.';
+  const head=[m.cls&&m.cls+' sinfi',m.subject,m.title].filter(Boolean).join(', ');
+  const hq=qs.filter(s=>s.cnt&&s.rate<hard).sort((a,b)=>a.rate-b.rate);
+  const gq=qs.filter(s=>s.cnt&&s.rate>=75).sort((a,b)=>b.rate-a.rate);
+  const sorted=[...c.sc].sort((a,b)=>b.pct-a.pct);
+  const topN=sorted.filter(s=>s.grade===5).map(s=>s.n);
+  let t='';
+  t+=`${head||'KSQ'}${m.date?' ('+m.date.split('-').reverse().join('.')+')':''} üzrə nəticələrin təhlili\n\n`;
+  t+=`Sinifdə ${S.students.length} şagird var, KSQ-də ${c.k} şagird iştirak edib. Qiymətləndirmə ${S.q.length} sual üzrə (maksimal bal: ${fmt(maxTotal())}) aparılıb.\n\n`;
+  t+=`Ümumi nəticələr: sinif üzrə orta nəticə ${fmt(c.avg)}%, median ${fmt(c.med)}%, ən yüksək nəticə ${fmt(c.max)}%, ən aşağı nəticə ${fmt(c.min)}% təşkil edir. Orta qiymət ${fmt(c.avgGrade)}-dir.\n`;
+  t+=`Qiymətlərin bölgüsü: “5” – ${c.dist[5]}, “4” – ${c.dist[4]}, “3” – ${c.dist[3]}, “2” – ${c.dist[2]} şagird. Mənimsəmə göstəricisi ${fmt(c.mastery)}%, keyfiyyət göstəricisi ${fmt(c.quality)}%-dir.\n\n`;
+  if(topN.length)t+=`Yüksək nəticə göstərən şagirdlər (“5”): ${topN.join(', ')}.\n\n`;
+  if(gq.length)t+=`Ən yaxşı mənimsənilən suallar: ${gq.slice(0,5).map(s=>s.i+1+' ('+fmt(s.rate)+'%'+(s.q.topic?', '+s.q.topic:'')+')').join('; ')}.\n\n`;
+  if(hq.length){
+    t+=`Həll faizi ${hard}%-dən aşağı olan suallar: ${hq.map(s=>s.i+1+' ('+fmt(s.rate)+'%'+(s.q.topic?', '+s.q.topic:'')+(s.wrong?', ən çox seçilən yanlış variant '+s.wrong:'')+')').join('; ')}.\n`;
+    const ht=[...new Set(hq.map(s=>s.q.topic).filter(Boolean))];
+    if(ht.length)t+=`Bu suallar aşağıdakı mövzu/standartlara aiddir: ${ht.join(', ')}.\n`;
+    t+='\n';
+  } else t+=`Həll faizi ${hard}%-dən aşağı olan sual qeydə alınmayıb.\n\n`;
+  t+=`Növbəti təlim üçün təkliflər:\n`;
+  if(hq.length)t+=`– ${hq.map(s=>s.i+1).join(', ')} nömrəli sualların əhatə etdiyi ${[...new Set(hq.map(s=>s.q.topic).filter(Boolean))].join(', ')||'mövzular'} üzrə təkrar və möhkəmləndirmə tapşırıqları planlaşdırılsın.\n`;
+  if(c.dist[2])t+=`– “2” qiyməti alan ${c.dist[2]} şagirdlə fərdi iş və əlavə məşğələ təşkil olunsun.\n`;
+  t+=`– …`;
+  return t;
+}
+$('b-csv').onclick=()=>{
+  const nt=S.q.filter(q=>q.type==='test').length;
+  const head=['№','Şagird',...S.q.map((q,i)=>'S'+(i+1)),...(nt?['Düzgün test']:[]),'Bal','Faiz','Qiymət'];
+  const rows=[head];
+  S.students.forEach((n,i)=>{const r=scoreOf(n),a=S.ans[n]||[];
+    rows.push(hasData(n)?[i+1,n,...S.q.map((q,qi)=>a[qi]??''),...(nt?[r.correct]:[]),fmt(r.pts),fmt(r.pct),r.grade]:[i+1,n,...S.q.map(()=>''),...(nt?['']:[]),'','','iştirak etməyib']);});
+  const csv='\ufeff'+rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';')).join('\r\n');
+  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  const a=document.createElement('a');a.href=url;a.download=(['KSQ',S.meta.cls,S.meta.title].filter(Boolean).join('_')||'KSQ')+'.csv';
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);
+};
+$('b-copy-rep').onclick=()=>copy($('report').textContent);
+function copy(txt){
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt).then(()=>toast('Kopyalandı'),()=>fallback(txt));}else fallback(txt);
+}
+function fallback(txt){const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');toast('Kopyalandı');}catch(e){toast('Kopyalamaq alınmadı');}ta.remove();}
+
+/* RESET */
+$('b-reset').onclick=()=>{$('reset-confirm').style.display='inline';};
+$('b-reset-no').onclick=()=>{$('reset-confirm').style.display='none';};
+$('b-reset-yes').onclick=()=>{
+  S={meta:{cls:'',subject:'',title:'',date:''},scale:{s3:31,s4:61,s5:81,hard:50},q:[],students:[],ans:{}};
+  for(let i=0;i<16;i++)S.q.push(blankQ());
+  save();bindMeta();renderKey();renderStudents();$('reset-confirm').style.display='none';show('setup');toast('Təmizləndi');
+};
+
+/* KSQ cavab blankı oxuyucusu (OMR). Blank düzümü mm ilə, A4. */
+const OMR = (()=>{
+  const MARK = [[14,14],[196,14],[196,283],[14,283]]; // TL TR BR BL
+  const R_IN = 2.3, R_RING_IN = 2.9, R_RING_OUT = 3.8;
+  const ID_TENS = [...Array(5)].map((_,d)=>[60+11*d,72]);
+  const ID_UNITS = [...Array(10)].map((_,d)=>[60+11*d,84]);
+  const Q = [];
+  for(let col=0;col<2;col++)for(let k=0;k<8;k++){
+    const bx = col? 128:40, y = 118+15*k;
+    Q.push([0,1,2,3,4].map(j=>[bx+12*j,y]));
+  }
+  const ALL = [...ID_TENS,...ID_UNITS,...Q.flat()];
+
+  function solve(A,b){ // Gauss
+    const n=b.length; A=A.map((r,i)=>[...r,b[i]]);
+    for(let c=0;c<n;c++){
+      let p=c; for(let r=c+1;r<n;r++) if(Math.abs(A[r][c])>Math.abs(A[p][c])) p=r;
+      [A[c],A[p]]=[A[p],A[c]];
+      if(Math.abs(A[c][c])<1e-12) return null;
+      for(let r=0;r<n;r++){ if(r===c) continue; const f=A[r][c]/A[c][c]; for(let k=c;k<=n;k++) A[r][k]-=f*A[c][k]; }
+    }
+    return A.map((r,i)=>r[n]/r[i]);
+  }
+  function homography(src,dst){
+    const A=[],b=[];
+    for(let i=0;i<4;i++){
+      const [x,y]=src[i],[u,v]=dst[i];
+      A.push([x,y,1,0,0,0,-u*x,-u*y]); b.push(u);
+      A.push([0,0,0,x,y,1,-v*x,-v*y]); b.push(v);
+    }
+    const h=solve(A,b); if(!h) return null;
+    return (x,y)=>{const w=h[6]*x+h[7]*y+1;return [(h[0]*x+h[1]*y+h[2])/w,(h[3]*x+h[4]*y+h[5])/w];};
+  }
+
+  function prepare(img){
+    const maxD=1600, sc=Math.min(1,maxD/Math.max(img.width,img.height));
+    const w=Math.round(img.width*sc), h=Math.round(img.height*sc);
+    const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+    const cx=cv.getContext('2d',{willReadFrequently:true}); cx.drawImage(img,0,0,w,h);
+    const d=cx.getImageData(0,0,w,h).data, g=new Float32Array(w*h);
+    for(let i=0,j=0;i<g.length;i++,j+=4) g[i]=0.299*d[j]+0.587*d[j+1]+0.114*d[j+2];
+    // integral image -> Bradley threshold
+    const I=new Float64Array((w+1)*(h+1));
+    for(let y=0;y<h;y++){let s=0;for(let x=0;x<w;x++){s+=g[y*w+x];I[(y+1)*(w+1)+x+1]=I[y*(w+1)+x+1]+s;}}
+    const S=Math.max(15,Math.round(Math.max(w,h)/12)), hs=S>>1, T=0.2;
+    const bin=new Uint8Array(w*h);
+    for(let y=0;y<h;y++){const y0=Math.max(0,y-hs),y1=Math.min(h,y+hs+1);
+      for(let x=0;x<w;x++){const x0=Math.max(0,x-hs),x1=Math.min(w,x+hs+1);
+        const sum=I[y1*(w+1)+x1]-I[y0*(w+1)+x1]-I[y1*(w+1)+x0]+I[y0*(w+1)+x0];
+        const mean=sum/((x1-x0)*(y1-y0));
+        bin[y*w+x]= g[y*w+x] < mean*(1-T) && g[y*w+x] < 200 ? 1:0;}}
+    return {w,h,bin,canvas:cv};
+  }
+
+  function blobs(P){
+    const {w,h,bin}=P, lab=new Int32Array(w*h), out=[]; const st=new Int32Array(w*h);
+    const minA=Math.pow(Math.max(w,h)*0.012,2);
+    let id=0;
+    for(let i=0;i<w*h;i++){
+      if(!bin[i]||lab[i]) continue;
+      id++; let sp=0; st[sp++]=i; lab[i]=id;
+      let a=0,sx=0,sy=0,x0=1e9,y0=1e9,x1=-1,y1=-1;
+      while(sp){const p=st[--sp],x=p%w,y=(p-x)/w; a++;sx+=x;sy+=y;
+        if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;
+        if(x>0){const q=p-1;if(bin[q]&&!lab[q]){lab[q]=id;st[sp++]=q;}}
+        if(x<w-1){const q=p+1;if(bin[q]&&!lab[q]){lab[q]=id;st[sp++]=q;}}
+        if(y>0){const q=p-w;if(bin[q]&&!lab[q]){lab[q]=id;st[sp++]=q;}}
+        if(y<h-1){const q=p+w;if(bin[q]&&!lab[q]){lab[q]=id;st[sp++]=q;}}
+      }
+      const bw=x1-x0+1,bh=y1-y0+1,ar=bw/bh,fill=a/(bw*bh);
+      if(a>=minA && ar>0.55 && ar<1.8 && fill>0.8 && bw<w/4 && bh<h/4) out.push({x:sx/a,y:sy/a,a,fill});
+    }
+    return out;
+  }
+
+  function dark(P,x,y){const xi=Math.round(x),yi=Math.round(y);if(xi<0||yi<0||xi>=P.w||yi>=P.h)return 0;return P.bin[yi*P.w+xi];}
+  function fillAt(P,H,cx,cy,r0,r1){
+    let n=0,k=0;
+    for(let dy=-r1;dy<=r1;dy+=0.3)for(let dx=-r1;dx<=r1;dx+=0.3){
+      const rr=Math.hypot(dx,dy); if(rr<r0||rr>r1) continue;
+      const [u,v]=H(cx+dx,cy+dy); k+=dark(P,u,v); n++;}
+    return n?k/n:0;
+  }
+  function decide(f,thr){
+    const idx=f.map((v,i)=>[v,i]).sort((a,b)=>b[0]-a[0]);
+    const [m,mi]=idx[0], s2=idx[1][0];
+    if(m<thr) return {v:null,flag: m>thr*0.55?'zəif işarə':''};
+    if(s2>=thr) return m-s2>0.3?{v:mi,flag:'bir neçə işarə – yoxlayın'}:{v:null,flag:'bir neçə cavab'};
+    return {v:mi,flag:''};
+  }
+
+  function read(img){
+    const P=prepare(img);
+    let c=blobs(P);
+    if(c.length<4) return {ok:false,error:'Künclərdəki 4 qara kvadrat tapılmadı. Vərəqin hamısı kadrda olsun.'};
+    c.sort((a,b)=>b.a-a.a);
+    // ən böyük 4 kvadrat, ölçücə bir-birinə yaxın olanlar
+    let pick=null;
+    for(let s=0;s+4<=Math.min(c.length,8)&&!pick;s++){const g=c.slice(s,s+4);if(g[3].a>g[0].a*0.35)pick=g;}
+    if(!pick) pick=c.slice(0,4);
+    const cx=pick.reduce((s,p)=>s+p.x,0)/4, cy=pick.reduce((s,p)=>s+p.y,0)/4;
+    pick.sort((a,b)=>Math.atan2(a.y-cy,a.x-cx)-Math.atan2(b.y-cy,b.x-cx)); // ekranda saat əqrəbi istiqaməti
+    let start=0,best=1e18; pick.forEach((p,i)=>{if(p.x+p.y<best){best=p.x+p.y;start=i;}});
+    let bestR=null;
+    for(let r=0;r<4;r++){
+      const dst=[0,1,2,3].map(k=>{const p=pick[(start+r+k)%4];return [p.x,p.y];});
+      const H=homography(MARK,dst); if(!H) continue;
+      // düzgün istiqamət: dairəciklərin konturları gözlənilən yerdədir
+      let ring=0,gap=0;
+      ALL.forEach(([x,y],i)=>{ if(i%3) return; ring+=fillAt(P,H,x,y,R_RING_IN,R_RING_OUT); gap+=fillAt(P,H,x+6,y+(i%2?4:-4),0,1.2);});
+      const score=ring-gap;
+      if(!bestR||score>bestR.score) bestR={H,score,ringAvg:ring/(ALL.length/3)};
+    }
+    if(!bestR||bestR.ringAvg<0.12) return {ok:false,error:'Blank tanınmadı. Şəkli düz, işıqlı yerdə, vərəqi tam göstərərək yenidən çəkin.'};
+    const H=bestR.H;
+    const raw=pts=>pts.map(([x,y])=>fillAt(P,H,x,y,0,R_IN));
+    // eşik: boş dairəciklərin səviyyəsinə görə uyğunlaşır
+    const all=[...raw(ID_TENS),...raw(ID_UNITS),...Q.flatMap(q=>raw(q))].sort((a,b)=>a-b);
+    const base=all[Math.floor(all.length*0.3)];
+    const thr=Math.max(0.3,Math.min(0.55,base+0.28));
+    const T=decide(raw(ID_TENS),thr), U=decide(raw(ID_UNITS),thr);
+    let id=null, idFlag='';
+    if(U.v!==null){ id=(T.v??0)*10+U.v; if(T.v===null) idFlag='onluq işarələnməyib, 0 götürüldü'; if(T.flag) idFlag=T.flag; if(U.flag) idFlag=U.flag; }
+    else idFlag='nömrə oxunmadı';
+    const answers=Q.map(q=>{const f=raw(q);const d=decide(f,thr);return {v:d.v===null?'':'ABCDE'[d.v],flag:d.flag,f};});
+    // önizləmə üçün işarələri çək
+    const cx2=P.canvas.getContext('2d'); cx2.lineWidth=Math.max(2,P.w/500);
+    const mark=(x,y,col)=>{const [u,v]=H(x,y),[u2]=H(x+3.6,y);cx2.strokeStyle=col;cx2.beginPath();cx2.arc(u,v,Math.abs(u2-u),0,7);cx2.stroke();};
+    Q.forEach((q,i)=>{const a=answers[i];q.forEach(([x,y],j)=>{if('ABCDE'[j]===a.v)mark(x,y,a.flag?'#d08000':'#1a9a4a');});if(a.flag&&!a.v)q.forEach(([x,y])=>mark(x,y,'#d03030'));});
+    if(T.v!==null)mark(...ID_TENS[T.v],'#2f5d8a'); if(U.v!==null)mark(...ID_UNITS[U.v],'#2f5d8a');
+    return {ok:true,id,idFlag,answers,preview:P.canvas.toDataURL('image/jpeg',0.6)};
+  }
+  return {read};
+})();
+
+/* SCAN */
+let SCANS=[];
+$('zoom').onclick=()=>{$('zoom').style.display='none';};
+$('scan-in').onchange=async e=>{
+  const files=[...e.target.files]; e.target.value='';
+  if(!files.length)return;
+  for(let i=0;i<files.length;i++){
+    $('scan-status').textContent=` Oxunur: ${i+1} / ${files.length}…`;
+    await new Promise(r=>setTimeout(r,20));
+    let res;
+    try{
+      const url=URL.createObjectURL(files[i]); const im=new Image(); im.src=url; await im.decode();
+      res=OMR.read(im); URL.revokeObjectURL(url);
+    }catch(err){res={ok:false,error:'Şəkil açılmadı.'};}
+    res.name=files[i].name; res.key=Date.now()+'-'+i; res.done=false;
+    if(res.ok){res.si=(res.id&&res.id<=S.students.length)?res.id-1:-1;}
+    SCANS.push(res);
+  }
+  $('scan-status').textContent=''; renderScans();
+};
+function renderScans(){
+  const box=$('scans');
+  $('b-scan-all').style.display=SCANS.some(s=>s.ok&&!s.done)?'inline-block':'none';
+  const used={}; SCANS.forEach(s=>{if(s.ok&&s.si>=0)used[s.si]=(used[s.si]||0)+1;});
+  box.innerHTML=SCANS.map((s,k)=>{
+    if(!s.ok)return `<div class="scan"><div class="body"><b>${esc(s.name)}</b><div class="msg bad">${esc(s.error)}</div><button class="btn ghost small" data-del="${k}">Sil</button></div></div>`;
+    const opts='<option value="-1">— şagirdi seçin —</option>'+S.students.map((n,i)=>`<option value="${i}"${i===s.si?' selected':''}>${i+1}. ${esc(n)}</option>`).join('');
+    const msgs=[];
+    if(s.id===null)msgs.push(['bad','Şagird nömrəsi oxunmadı – siyahıdan seçin.']);
+    else if(s.id<1||s.id>S.students.length)msgs.push(['bad',`Blankda ${s.id} nömrəsi işarələnib, siyahıda belə nömrə yoxdur – şagirdi seçin.`]);
+    if(s.idFlag)msgs.push(['warn','Nömrə: '+s.idFlag+'.']);
+    if(s.si>=0&&used[s.si]>1)msgs.push(['warn','Bu şagird üçün birdən çox blank var.']);
+    if(s.si>=0&&hasData(S.students[s.si])&&!s.done)msgs.push(['warn','Bu şagirdin cədvəldə cavabları var – yazanda əvəz olunacaq.']);
+    const fl=s.answers.map((a,i)=>a.flag?`${i+1} (${a.flag})`:'').filter(Boolean);
+    if(fl.length)msgs.push(['warn','Yoxlayın: '+fl.join('; ')]);
+    const blank=s.answers.filter(a=>!a.v&&!a.flag).length;
+    if(blank)msgs.push(['', blank+' sual cavabsızdır.']);
+    if(s.done)msgs.unshift(['ok','Cədvələ yazıldı.']);
+    return `<div class="scan${s.done?' done':''}"><img src="${s.preview}" data-z="${k}" alt="blank">
+      <div class="body">
+        <label class="f" style="flex-direction:row;align-items:center;gap:8px">Şagird <select data-si="${k}">${opts}</select></label>
+        <div class="qs">${s.answers.map((a,i)=>`<label>${i+1}<input data-k="${k}" data-q="${i}" value="${a.v}" maxlength="1" class="${a.flag?'fl':''}"></label>`).join('')}</div>
+        ${msgs.map(([c,t])=>`<div class="msg ${c}">${esc(t)}</div>`).join('')}
+        <div class="row" style="margin-top:8px"><button class="btn small" data-put="${k}">Cədvələ yaz</button><button class="btn ghost small" data-del="${k}">Sil</button></div>
+      </div></div>`;
+  }).join('');
+  box.querySelectorAll('[data-z]').forEach(el=>el.onclick=()=>{$('zoom').querySelector('img').src=el.src;$('zoom').style.display='flex';});
+  box.querySelectorAll('[data-si]').forEach(el=>el.onchange=()=>{const sc=SCANS[+el.dataset.si];sc.si=+el.value;sc.manual=true;renderScans();});
+  box.querySelectorAll('input[data-k]').forEach(el=>el.oninput=()=>{const v=el.value.toUpperCase().replace(/[^A-E]/g,'').slice(0,1);el.value=v;const a=SCANS[+el.dataset.k].answers[+el.dataset.q];a.v=v;a.flag='';el.classList.remove('fl');});
+  box.querySelectorAll('[data-del]').forEach(el=>el.onclick=()=>{SCANS.splice(+el.dataset.del,1);renderScans();});
+  box.querySelectorAll('[data-put]').forEach(el=>el.onclick=()=>{if(putScan(+el.dataset.put)){renderScans();renderAns();}});
+}
+function putScan(k){
+  const s=SCANS[k]; if(!s.ok)return false;
+  if(s.si<0){toast('Əvvəlcə şagirdi seçin');return false;}
+  const n=S.students[s.si]; if(!S.ans[n])S.ans[n]=[];
+  let w=0;
+  s.answers.forEach((a,i)=>{if(i<S.q.length&&S.q[i].type==='test'){S.ans[n][i]=a.v;w++;}});
+  s.done=true; save(); toast(`${n}: ${w} cavab yazıldı`); return true;
+}
+$('b-scan-all').onclick=()=>{
+  const cnt={}; SCANS.forEach(s=>{if(s.ok&&s.si>=0)cnt[s.si]=(cnt[s.si]||0)+1;});
+  let c=0,skip=0;
+  SCANS.forEach((s,k)=>{if(!s.ok||s.done)return;
+    const clean=s.si>=0&&cnt[s.si]===1&&(s.manual||!s.idFlag);
+    if(clean){putScan(k);c++;}else skip++;});
+  renderScans(); renderAns();
+  toast(`${c} blank yazıldı`+(skip?`; ${skip} blankı ayrıca yoxlayıb “Cədvələ yaz” düyməsini basın`:''));
+};
+
+if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));}
+load();bindMeta();renderKey();renderStudents();
+</script>
+</body>
+</html>

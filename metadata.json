@@ -1,0 +1,6 @@
+{
+  "name": "ksqhesab",
+  "description": "Cavab açarını və şagird cavablarını daxil edin. Bal, faiz, qiymət və sinif təhlili avtomatik hesablanır.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
