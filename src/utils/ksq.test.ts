@@ -32,15 +32,20 @@ test('parseStudentLines strips numbering and blank lines', () => {
   ]);
 });
 
-test('cellState and qPts handle test and open questions accurately', () => {
-  const testQ = { type: 'test' as const, key: 'B', max: 2, topic: '1.1' };
-  const openQ = { type: 'open' as const, key: '', max: 4, topic: '2.1' };
+test('cellState and qPts handle test, Variant A/B, and open questions accurately', () => {
+  const testQ = { type: 'test' as const, key: 'B', keyB: 'D', max: 2, topic: '1.1' };
+  const openQ = { type: 'open' as const, key: '', keyB: '', max: 4, topic: '2.1' };
 
-  assert.equal(cellState(testQ, ''), '');
-  assert.equal(cellState(testQ, 'B'), 'c');
-  assert.equal(cellState(testQ, 'A'), 'x');
-  assert.equal(qPts(testQ, 'B'), 2);
-  assert.equal(qPts(testQ, 'A'), 0);
+  assert.equal(cellState(testQ, '', 'A'), '');
+  assert.equal(cellState(testQ, 'B', 'A'), 'c');
+  assert.equal(cellState(testQ, 'A', 'A'), 'x');
+  assert.equal(qPts(testQ, 'B', 'A'), 2);
+  assert.equal(qPts(testQ, 'A', 'A'), 0);
+
+  assert.equal(cellState(testQ, 'D', 'B'), 'c');
+  assert.equal(cellState(testQ, 'B', 'B'), 'x');
+  assert.equal(qPts(testQ, 'D', 'B'), 2);
+  assert.equal(qPts(testQ, 'B', 'B'), 0);
 
   assert.equal(cellState(openQ, ''), '');
   assert.equal(cellState(openQ, '4'), 'c');
@@ -58,7 +63,7 @@ test('gradeOf respects rounded percentage thresholds', () => {
   assert.equal(gradeOf(80.5, scale), 5);
 });
 
-test('median, classStats, qStats, reportText, TSV and CSV compute consistently', () => {
+test('median, classStats, qStats, reportText, TSV and CSV compute consistently with A/B variants', () => {
   assert.equal(median([]), 0);
   assert.equal(median([10, 30, 20]), 20);
   assert.equal(median([10, 40, 20, 30]), 25);
@@ -66,14 +71,18 @@ test('median, classStats, qStats, reportText, TSV and CSV compute consistently',
   const state = createInitialState();
   state.meta = { cls: '7A', subject: 'Ədəbiyyat', title: 'KSQ-2', date: '2026-11-22' };
   state.q = [
-    { type: 'test', key: 'A', max: 1, topic: '1.1.1' },
-    { type: 'test', key: 'B', max: 1, topic: '1.1.1' },
-    { type: 'open', key: '', max: 2, topic: '2.2.1' },
+    { type: 'test', key: 'A', keyB: 'D', max: 1, topic: '1.1.1' },
+    { type: 'test', key: 'B', keyB: 'E', max: 1, topic: '1.1.1' },
+    { type: 'open', key: '', keyB: '', max: 2, topic: '2.2.1' },
   ];
   state.students = ['Əliyev Murad', 'Həsənova Leyla', 'Quliyev Rauf'];
+  state.studentVariants = {
+    'Əliyev Murad': 'A',
+    'Həsənova Leyla': 'B',
+  };
   state.ans = {
-    'Əliyev Murad': ['A', 'B', '2'], // 4/4 = 100% -> 5
-    'Həsənova Leyla': ['A', 'C', '0'], // 1/4 = 25% -> 2
+    'Əliyev Murad': ['A', 'B', '2'], // Var A: 4/4 = 100% -> 5
+    'Həsənova Leyla': ['D', 'C', '0'], // Var B: Q1='D' correct (1), Q2='C' wrong vs 'E' (0), Q3=0 -> 1/4 = 25% -> 2
     // Quliyev Rauf absent
   };
 
@@ -83,6 +92,12 @@ test('median, classStats, qStats, reportText, TSV and CSV compute consistently',
   assert.equal(s1.correct, 2);
   assert.equal(s1.pct, 100);
   assert.equal(s1.grade, 5);
+
+  const s2 = scoreOf(state, 'Həsənova Leyla');
+  assert.equal(s2.pts, 1);
+  assert.equal(s2.correct, 1);
+  assert.equal(s2.pct, 25);
+  assert.equal(s2.grade, 2);
 
   const c = classStats(state);
   assert.equal(c.k, 2);
@@ -105,10 +120,12 @@ test('median, classStats, qStats, reportText, TSV and CSV compute consistently',
   assert.match(rep, /Yüksək nəticə göstərən şagirdlər \(“5”\): Əliyev Murad/);
 
   const tsv = buildResultsTsv(state);
-  assert.match(tsv, /Əliyev Murad\t2\/2\t4\t100%\t5/);
-  assert.match(tsv, /Quliyev Rauf\t–\t–\t–\tiştirak etməyib/);
+  assert.match(tsv, /Əliyev Murad\tA\t2\/2\t4\t100%\t5/);
+  assert.match(tsv, /Həsənova Leyla\tB\t1\/2\t1\t25%\t2/);
+  assert.match(tsv, /Quliyev Rauf\tA\t–\t–\t–\tiştirak etməyib/);
 
   const csv = buildResultsCsv(state);
   assert.ok(csv.startsWith('\ufeff'));
-  assert.match(csv, /"1";"Əliyev Murad";"A";"B";"2";"2";"4";"100";"5"/);
+  assert.match(csv, /"1";"Əliyev Murad";"A";"A";"B";"2";"2";"4";"100";"5"/);
+  assert.match(csv, /"2";"Həsənova Leyla";"B";"D";"C";"0";"1";"1";"25";"2"/);
 });

@@ -1,5 +1,5 @@
-import type { GradeScale, Question } from '../types/ksq';
-import { cellState, gradeOf, maxTotal, qPts } from './ksq';
+import type { GradeScale, Question, TestPaperAnswerItem, VariantId } from '../types/ksq';
+import { cellState, getQuestionKey, gradeOf, maxTotal, qPts } from './ksq';
 
 function normalizeAz(text: string): string {
   return text
@@ -57,6 +57,56 @@ export function matchStudentIndex(
   return bestScore >= 0.5 && !tied ? bestIdx : -1;
 }
 
+export function mergeScanAnswers(
+  existing: TestPaperAnswerItem[],
+  incoming: TestPaperAnswerItem[],
+): TestPaperAnswerItem[] {
+  const len = Math.max(existing.length, incoming.length);
+  const merged: TestPaperAnswerItem[] = [];
+  for (let i = 0; i < len; i++) {
+    const cur = existing[i] ?? { value: '', confidence: 'low' as const, note: '' };
+    const inc = incoming[i] ?? { value: '', confidence: 'low' as const, note: '' };
+
+    if (cur.value === '' && inc.value !== '') {
+      merged.push(inc);
+    } else if (cur.value !== '' && inc.value === '') {
+      merged.push(cur);
+    } else if (cur.value !== '' && inc.value !== '') {
+      if (cur.value === inc.value) {
+        merged.push({
+          value: cur.value,
+          confidence: cur.confidence === 'high' || inc.confidence === 'high' ? 'high' : cur.confidence,
+          note: cur.note || inc.note,
+        });
+      } else if (cur.confidence === 'low' && inc.confidence !== 'low') {
+        merged.push(inc);
+      } else {
+        merged.push({
+          ...cur,
+          confidence: 'medium',
+          note: cur.note
+            ? `${cur.note}; digər səhifədə: ${inc.value}`
+            : `digər səhifədə fərqli işarə: ${inc.value}`,
+        });
+      }
+    } else {
+      const notVisible = (s: string) => /görünmür|yoxdur/i.test(s);
+      const note =
+        cur.note && !notVisible(cur.note)
+          ? cur.note
+          : inc.note && !notVisible(inc.note)
+            ? inc.note
+            : cur.note || inc.note;
+      merged.push({
+        value: '',
+        confidence: cur.confidence,
+        note,
+      });
+    }
+  }
+  return merged;
+}
+
 export interface TestScanSummaryItem {
   qNum: number;
   type: 'test' | 'open';
@@ -84,6 +134,7 @@ export function summarizeScanVsKey(
   questions: Question[],
   scannedValues: string[],
   scale: GradeScale,
+  variant: VariantId = 'A',
 ): TestScanSummary {
   let correctCount = 0;
   let wrongCount = 0;
@@ -91,11 +142,14 @@ export function summarizeScanVsKey(
   let unkeyedCount = 0;
   let pts = 0;
   const maxPts = maxTotal(questions);
-  const hasAnyKey = questions.some((q) => (q.type === 'test' ? Boolean(q.key) : q.max > 0));
+  const hasAnyKey = questions.some((q) =>
+    q.type === 'test' ? Boolean(getQuestionKey(q, variant)) : q.max > 0,
+  );
 
   const items: TestScanSummaryItem[] = questions.map((q, i) => {
     const v = scannedValues[i] ?? '';
-    const p = qPts(q, v);
+    const key = getQuestionKey(q, variant);
+    const p = qPts(q, v, variant);
     pts += p;
 
     if (v === '') {
@@ -104,14 +158,14 @@ export function summarizeScanVsKey(
         qNum: i + 1,
         type: q.type,
         studentValue: v,
-        correctKey: q.key,
+        correctKey: key,
         status: 'blank',
         pts: 0,
         max: q.max,
       };
     }
 
-    if (q.type === 'test' && !q.key) {
+    if (q.type === 'test' && !key) {
       unkeyedCount++;
       return {
         qNum: i + 1,
@@ -124,14 +178,14 @@ export function summarizeScanVsKey(
       };
     }
 
-    const st = cellState(q, v);
+    const st = cellState(q, v, variant);
     if (st === 'c') {
       correctCount++;
       return {
         qNum: i + 1,
         type: q.type,
         studentValue: v,
-        correctKey: q.key,
+        correctKey: key,
         status: 'correct',
         pts: p,
         max: q.max,
@@ -142,7 +196,7 @@ export function summarizeScanVsKey(
         qNum: i + 1,
         type: q.type,
         studentValue: v,
-        correctKey: q.key,
+        correctKey: key,
         status: 'partial',
         pts: p,
         max: q.max,
@@ -153,7 +207,7 @@ export function summarizeScanVsKey(
       qNum: i + 1,
       type: q.type,
       studentValue: v,
-      correctKey: q.key,
+      correctKey: key,
       status: 'wrong',
       pts: p,
       max: q.max,

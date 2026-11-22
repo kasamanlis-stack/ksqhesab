@@ -435,6 +435,51 @@ pre.out {
   align-self: flex-start;
 }
 
+.scan-pages {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  max-width: 260px;
+}
+
+.scan-pages.multi img {
+  width: 112px;
+}
+
+.scan-page-thumb {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.scan-page-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.scan-page-placeholder {
+  width: 112px;
+  min-height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  padding: 6px;
+  margin: 0;
+}
+
+.ksq-table td select.var-select {
+  padding: 4px 5px;
+  min-width: 44px;
+  font-weight: 600;
+}
+
 .scan .body {
   flex: 1;
   min-width: 280px;

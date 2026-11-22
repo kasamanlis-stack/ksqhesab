@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { GradeScale, KsqMeta, Question, QuestionType } from '../types/ksq';
+import type { GradeScale, KsqMeta, Question, QuestionType, VariantId } from '../types/ksq';
 
 interface SetupViewProps {
   meta: KsqMeta;
@@ -9,7 +9,7 @@ interface SetupViewProps {
   onScaleChange: (field: keyof GradeScale, value: number) => void;
   onApplyQuestionCount: (count: number) => void;
   onQuestionChange: (index: number, patch: Partial<Question>) => void;
-  onApplyQuickKey: (rawKey: string) => void;
+  onApplyQuickKey: (rawKey: string, variant: VariantId) => void;
 }
 
 export function SetupView({
@@ -23,7 +23,8 @@ export function SetupView({
   onApplyQuickKey,
 }: SetupViewProps) {
   const [nDraft, setNDraft] = useState<string>(String(questions.length));
-  const [quickKey, setQuickKey] = useState<string>('');
+  const [quickKeyA, setQuickKeyA] = useState<string>('');
+  const [quickKeyB, setQuickKeyB] = useState<string>('');
 
   useEffect(() => {
     setNDraft(String(questions.length));
@@ -103,9 +104,9 @@ export function SetupView({
       </div>
 
       <div className="card">
-        <h2>Cavab açarı</h2>
+        <h2>Cavab açarı (A və B variantları)</h2>
         <p className="hint">
-          Test sualları üçün düzgün variantı yazın (A, B, C…). Açıq sual üçün növü “Açıq” seçin və maksimal balı yazın; şagirdin aldığı balı sonra daxil edəcəksiniz. “Mövzu / standart” sütunu təhlildə çətinlik yaradan mövzuları göstərmək üçündür.
+          Test sualları üçün A və B variantlarının düzgün cavablarını yazın (A, B, C…). Açıq sual üçün növü “Açıq” seçin və maksimal balı yazın; şagirdin aldığı balı sonra daxil edəcəksiniz. “Mövzu / standart” sütunu təhlildə çətinlik yaradan mövzuları göstərmək üçündür.
         </p>
         <div className="tw">
           <table id="t-key" className="ksq-table">
@@ -113,7 +114,8 @@ export function SetupView({
               <tr>
                 <th>Sual</th>
                 <th>Növ</th>
-                <th>Düzgün cavab</th>
+                <th>A variantı</th>
+                <th>B variantı</th>
                 <th>Maks. bal</th>
                 <th style={{ textAlign: 'left' }}>Mövzu / standart</th>
               </tr>
@@ -144,12 +146,27 @@ export function SetupView({
                   <td>
                     {q.type === 'test' ? (
                       <input
-                        aria-label={`Sual ${i + 1} düzgün cavab`}
+                        aria-label={`Sual ${i + 1} A variantı`}
                         maxLength={1}
                         value={q.key}
                         onChange={(e) => {
                           const v = e.target.value.toUpperCase().replace(/[^A-E]/g, '');
                           onQuestionChange(i, { key: v });
+                        }}
+                      />
+                    ) : (
+                      <span className="hint">bal ilə</span>
+                    )}
+                  </td>
+                  <td>
+                    {q.type === 'test' ? (
+                      <input
+                        aria-label={`Sual ${i + 1} B variantı`}
+                        maxLength={1}
+                        value={q.keyB ?? ''}
+                        onChange={(e) => {
+                          const v = e.target.value.toUpperCase().replace(/[^A-E]/g, '');
+                          onQuestionChange(i, { keyB: v });
                         }}
                       />
                     ) : (
@@ -185,23 +202,43 @@ export function SetupView({
           </table>
         </div>
         <div className="row" style={{ marginTop: 12 }}>
-          <label className="f" style={{ flex: 1, minWidth: 260 }}>
-            Test açarını bir sətirlə daxil edin (məs. ABDCA BBEAC)
+          <label className="f" style={{ flex: 1, minWidth: 240 }}>
+            A variantı açarı (bir sətirlə, məs. ABDCA BBEAC)
             <input
               id="key-quick"
               className="ksq-input"
               placeholder="ABDCABBEAC"
-              value={quickKey}
-              onChange={(e) => setQuickKey(e.target.value)}
+              value={quickKeyA}
+              onChange={(e) => setQuickKeyA(e.target.value)}
             />
           </label>
           <button
             type="button"
             className="btn ghost"
             id="b-key-quick"
-            onClick={() => onApplyQuickKey(quickKey)}
+            onClick={() => onApplyQuickKey(quickKeyA, 'A')}
           >
-            Açara yaz
+            A açarına yaz
+          </button>
+        </div>
+        <div className="row" style={{ marginTop: 10 }}>
+          <label className="f" style={{ flex: 1, minWidth: 240 }}>
+            B variantı açarı (bir sətirlə, məs. DCBAE AABCE)
+            <input
+              id="key-quick-b"
+              className="ksq-input"
+              placeholder="DCBAEAABCE"
+              value={quickKeyB}
+              onChange={(e) => setQuickKeyB(e.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className="btn ghost"
+            id="b-key-quick-b"
+            onClick={() => onApplyQuickKey(quickKeyB, 'B')}
+          >
+            B açarına yaz
           </button>
         </div>
       </div>

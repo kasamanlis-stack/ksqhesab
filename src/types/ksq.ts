@@ -2,9 +2,12 @@ export type ViewId = 'setup' | 'students' | 'answers' | 'results' | 'analysis';
 
 export type QuestionType = 'test' | 'open';
 
+export type VariantId = 'A' | 'B';
+
 export interface Question {
   type: QuestionType;
   key: string;
+  keyB?: string;
   max: number;
   topic: string;
 }
@@ -29,6 +32,7 @@ export interface KsqState {
   q: Question[];
   students: string[];
   ans: Record<string, string[]>;
+  studentVariants?: Record<string, VariantId>;
 }
 
 export type CellState = '' | 'c' | 'x' | 'p';
@@ -93,6 +97,7 @@ export type ScanItem =
       key: string;
       done: boolean;
       si: number;
+      variant?: VariantId;
       manual?: boolean;
     })
   | (OmrReadFailure & {
@@ -113,8 +118,10 @@ export type TestPaperScanItem =
       name: string;
       key: string;
       done: boolean;
-      preview: string;
+      previews: string[];
       detectedName: string | null;
+      detectedVariant: VariantId | null;
+      variant: VariantId;
       si: number;
       manual?: boolean;
       answers: TestPaperAnswerItem[];

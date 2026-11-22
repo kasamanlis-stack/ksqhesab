@@ -5,6 +5,7 @@ import {
   buildResultsTsv,
   classStats,
   fmt,
+  getStudentVariant,
   hasData,
   maxTotal,
   scoreOf,
@@ -33,6 +34,7 @@ export function ResultsView({ state, onCopyText }: ResultsViewProps) {
   const rows = state.students.map((n, i) => ({
     i,
     n,
+    variant: getStudentVariant(state, n),
     has: hasData(state.ans, n),
     ...scoreOf(state, n),
   }));
@@ -116,6 +118,7 @@ export function ResultsView({ state, onCopyText }: ResultsViewProps) {
                   <tr>
                     <th>№</th>
                     <th className="name">Şagird</th>
+                    <th>Var.</th>
                     {nt > 0 && <th>Düzgün test</th>}
                     <th>Bal</th>
                     <th>Faiz</th>
@@ -129,6 +132,7 @@ export function ResultsView({ state, onCopyText }: ResultsViewProps) {
                       <tr key={`${r.i}-${r.n}`}>
                         <td>{r.i + 1}</td>
                         <td className="name">{r.n}</td>
+                        <td>{r.variant}</td>
                         {nt > 0 && <td>–</td>}
                         <td>–</td>
                         <td>–</td>
@@ -141,6 +145,7 @@ export function ResultsView({ state, onCopyText }: ResultsViewProps) {
                       <tr key={`${r.i}-${r.n}`}>
                         <td>{r.i + 1}</td>
                         <td className="name">{r.n}</td>
+                        <td>{r.variant}</td>
                         {nt > 0 && (
                           <td>
                             {r.correct} / {nt}

@@ -1,42 +1,144 @@
 import { useState } from 'react';
 import type { ChangeEvent } from 'react';
-import type { KsqState, TestPaperAnswerItem, TestPaperScanItem } from '../types/ksq';
-import { fmt, hasData } from '../utils/ksq';
-import { matchStudentIndex, summarizeScanVsKey } from '../utils/testScan';
+import type { KsqState, TestPaperAnswerItem, TestPaperScanItem, VariantId } from '../types/ksq';
+import { fmt, getQuestionKey, getStudentVariant, hasData } from '../utils/ksq';
+import { matchStudentIndex, mergeScanAnswers, summarizeScanVsKey } from '../utils/testScan';
 
 interface TestPaperScanCardProps {
   state: KsqState;
   testScans: TestPaperScanItem[];
   onSetTestScans: React.Dispatch<React.SetStateAction<TestPaperScanItem[]>>;
-  onApplyTestPaperAnswers: (studentName: string, values: string[]) => number;
+  onApplyTestPaperAnswers: (studentName: string, values: string[], variant: VariantId) => number;
   onZoomImage: (src: string) => void;
   onToast: (message: string) => void;
 }
 
-async function fileToResizedJpeg(
-  file: File,
-): Promise<{ base64: string; mimeType: string; preview: string }> {
-  const url = URL.createObjectURL(file);
-  try {
+const MAX_TOTAL_BASE64_BYTES = 2_800_000;
+const MAX_PAGES_PER_STUDENT = 4;
+
+function inferImageMimeType(file: File): string {
+  if (file.type && file.type.startsWith('image/')) return file.type.toLowerCase();
+  const ext = file.name.split('.').pop()?.toLowerCase() || '';
+  if (ext === 'png') return 'image/png';
+  if (ext === 'webp') return 'image/webp';
+  if (ext === 'heic') return 'image/heic';
+  if (ext === 'heif') return 'image/heif';
+  return 'image/jpeg';
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') resolve(reader.result);
+      else reject(new Error('Fayl oxunmadı.'));
+    };
+    reader.onerror = () => reject(new Error('Fayl oxunarkən xəta baş verdi.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImageElement(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
     const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Image element decode failed'));
+    };
     img.src = url;
-    await img.decode();
-    const maxD = 1800;
-    const sc = Math.min(1, maxD / Math.max(img.width, img.height));
-    const w = Math.max(1, Math.round(img.width * sc));
-    const h = Math.max(1, Math.round(img.height * sc));
-    const cv = document.createElement('canvas');
+  });
+}
+
+function encodeSourceToBoundedJpeg(
+  source: CanvasImageSource,
+  srcW: number,
+  srcH: number,
+  maxBytes: number,
+): { base64: string; mimeType: string; preview: string } {
+  const attempts: Array<[number, number]> = [
+    [1600, 0.82],
+    [1280, 0.72],
+    [1024, 0.65],
+    [900, 0.56],
+  ];
+  const cv = document.createElement('canvas');
+  const cx = cv.getContext('2d');
+  if (!cx) throw new Error('Brauzer şəkil emalı (Canvas) dəstəklənmir.');
+
+  for (const [maxD, quality] of attempts) {
+    const sc = Math.min(1, maxD / Math.max(srcW, srcH));
+    const w = Math.max(1, Math.round(srcW * sc));
+    const h = Math.max(1, Math.round(srcH * sc));
     cv.width = w;
     cv.height = h;
-    const cx = cv.getContext('2d');
-    if (!cx) throw new Error('Canvas unavailable');
-    cx.drawImage(img, 0, 0, w, h);
-    const dataUrl = cv.toDataURL('image/jpeg', 0.85);
+    cx.fillStyle = '#ffffff';
+    cx.fillRect(0, 0, w, h);
+    cx.drawImage(source, 0, 0, w, h);
+    const dataUrl = cv.toDataURL('image/jpeg', quality);
     const base64 = dataUrl.split(',')[1] || '';
-    return { base64, mimeType: 'image/jpeg', preview: dataUrl };
-  } finally {
-    URL.revokeObjectURL(url);
+    if (base64.length <= maxBytes || maxD === 900) {
+      return { base64, mimeType: 'image/jpeg', preview: dataUrl };
+    }
   }
+  throw new Error('Şəkil sıxışdırıla bilmədi.');
+}
+
+async function fileToResizedJpeg(
+  file: File,
+  maxBytes: number = MAX_TOTAL_BASE64_BYTES,
+): Promise<{ base64: string; mimeType: string; preview: string }> {
+  if (typeof createImageBitmap === 'function') {
+    let bitmap: ImageBitmap | null = null;
+    try {
+      bitmap = await createImageBitmap(file);
+      return encodeSourceToBoundedJpeg(bitmap, bitmap.width, bitmap.height, maxBytes);
+    } catch {
+      // Fallback to HTMLImageElement / raw upload below
+    } finally {
+      bitmap?.close();
+    }
+  }
+
+  try {
+    const img = await loadImageElement(file);
+    return encodeSourceToBoundedJpeg(
+      img,
+      img.naturalWidth || img.width,
+      img.naturalHeight || img.height,
+      maxBytes,
+    );
+  } catch {
+    const mimeType = inferImageMimeType(file);
+    const supportedRaw = new Set([
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'image/heic',
+      'image/heif',
+    ]);
+    if (supportedRaw.has(mimeType) && file.size <= 3_000_000) {
+      const dataUrl = await readFileAsDataUrl(file);
+      const base64 = dataUrl.split(',')[1] || '';
+      if (base64.length > 32 && base64.length <= maxBytes + 800_000) {
+        const canPreview = mimeType !== 'image/heic' && mimeType !== 'image/heif';
+        return { base64, mimeType, preview: canPreview ? dataUrl : '' };
+      }
+    }
+    throw new Error(
+      'Bu şəkil formatı brauzerdə oxunmadı və ya həcmi çox böyükdür. Zəhmət olmasa JPG və ya PNG şəkil seçin.',
+    );
+  }
+}
+
+interface ScanApiSuccess {
+  studentName: string | null;
+  variant: VariantId | null;
+  answers: TestPaperAnswerItem[];
 }
 
 export function TestPaperScanCard({
@@ -50,9 +152,155 @@ export function TestPaperScanCard({
   const [status, setStatus] = useState<string>('');
   const [busy, setBusy] = useState<boolean>(false);
 
-  const hasAnyTestKey = state.q.some((q) => (q.type === 'test' ? Boolean(q.key) : q.max > 0));
+  const hasAnyTestKey = state.q.some((q) =>
+    q.type === 'test' ? Boolean(q.key || q.keyB) : q.max > 0,
+  );
 
-  const handleFiles = async (e: ChangeEvent<HTMLInputElement>) => {
+  const callScanApi = async (
+    encodedPages: Array<{ base64: string; mimeType: string }>,
+  ): Promise<ScanApiSuccess> => {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 75_000);
+    try {
+      const resp = await fetch('/api/scan-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          images: encodedPages.map((p) => ({
+            imageBase64: p.base64,
+            mimeType: p.mimeType,
+          })),
+          questions: state.q.map((q, idx) => ({
+            number: idx + 1,
+            type: q.type,
+            max: q.max,
+          })),
+          students: state.students,
+        }),
+      });
+      const rawText = await resp.text();
+      let data: {
+        ok?: boolean;
+        error?: string;
+        studentName?: string | null;
+        variant?: string | null;
+        answers?: TestPaperAnswerItem[];
+      } | null = null;
+      try {
+        data = rawText ? JSON.parse(rawText) : null;
+      } catch {
+        data = null;
+      }
+
+      if (!resp.ok || !data?.ok || !Array.isArray(data.answers)) {
+        let errMsg = data?.error || '';
+        if (!errMsg) {
+          if (resp.status === 404) {
+            errMsg = 'Serverdə test oxuma xidməti (/api/scan-test) tapılmadı.';
+          } else if (resp.status === 413) {
+            errMsg = 'Şəkillərin ölçüsü server limiti üçün çox böyükdür.';
+          } else if (resp.status === 502 || resp.status === 504) {
+            errMsg = 'Server cavab vermədi (vaxt aşımı). Yenidən cəhd edin.';
+          } else {
+            errMsg = `Test vərəqi oxunmadı (HTTP ${resp.status}).`;
+          }
+        }
+        throw new Error(errMsg);
+      }
+
+      const detectedVariant: VariantId | null =
+        data.variant === 'A' || data.variant === 'B' ? data.variant : null;
+
+      return {
+        studentName: data.studentName || null,
+        variant: detectedVariant,
+        answers: data.answers,
+      };
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        throw new Error('Sorğu vaxtı bitdi. İnternet bağlantısını yoxlayıb yenidən cəhd edin.');
+      }
+      if (err instanceof TypeError) {
+        throw new Error('Serverlə əlaqə qurula bilmədi. İnternet bağlantısını yoxlayın.');
+      }
+      if (err instanceof Error && err.message) {
+        throw err;
+      }
+      throw new Error('Şəkil yüklənərkən və ya oxunarkən xəta baş verdi.');
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  };
+
+  // Multi-page upload for ONE student (1–4 pages combined in one API call)
+  const handleUnifiedStudentFiles = async (e: ChangeEvent<HTMLInputElement>) => {
+    const selected = [...(e.target.files || [])];
+    e.target.value = '';
+    if (!selected.length) return;
+
+    const files = selected.slice(0, MAX_PAGES_PER_STUDENT);
+    if (selected.length > MAX_PAGES_PER_STUDENT) {
+      onToast(`Bir şagird üçün ən çox ${MAX_PAGES_PER_STUDENT} səhifə birləşdirilir.`);
+    }
+
+    setBusy(true);
+    const key = `tp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const labelName =
+      files.length > 1 ? `${files[0].name} (+${files.length - 1} səhifə)` : files[0].name;
+
+    try {
+      setStatus(
+        files.length > 1
+          ? ` ${files.length} səhifə hazırlanır və oxunur…`
+          : ' Test vərəqi oxunur…',
+      );
+      const perPageBudget = Math.floor(MAX_TOTAL_BASE64_BYTES / Math.max(1, files.length));
+      const encoded = await Promise.all(files.map((f) => fileToResizedJpeg(f, perPageBudget)));
+      const result = await callScanApi(encoded);
+      const si = matchStudentIndex(result.studentName, state.students);
+      const fallbackVariant =
+        si >= 0 ? getStudentVariant(state, state.students[si]) : ('A' as VariantId);
+      const variant = result.variant ?? fallbackVariant;
+
+      onSetTestScans((prev) => [
+        ...prev,
+        {
+          ok: true,
+          name: labelName,
+          key,
+          done: false,
+          previews: encoded.map((p) => p.preview),
+          detectedName: result.studentName,
+          detectedVariant: result.variant,
+          variant,
+          si,
+          answers: result.answers,
+        },
+      ]);
+    } catch (err) {
+      const errMsg =
+        err instanceof Error && err.message
+          ? err.message
+          : 'Şəkil yüklənərkən və ya oxunarkən xəta baş verdi.';
+      onSetTestScans((prev) => [
+        ...prev,
+        {
+          ok: false,
+          name: labelName,
+          key,
+          done: false,
+          error: errMsg,
+        },
+      ]);
+    } finally {
+      setStatus('');
+      setBusy(false);
+    }
+  };
+
+  // Batch upload: each selected image creates a separate student scan card
+  const handleBatchFiles = async (e: ChangeEvent<HTMLInputElement>) => {
     const files = [...(e.target.files || [])];
     e.target.value = '';
     if (!files.length) return;
@@ -60,65 +308,96 @@ export function TestPaperScanCard({
     setBusy(true);
     const added: TestPaperScanItem[] = [];
     for (let i = 0; i < files.length; i++) {
-      setStatus(` Oxunur: ${i + 1} / ${files.length}…`);
+      setStatus(` Toplu oxunur: ${i + 1} / ${files.length}…`);
       const key = `tp-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`;
       try {
-        const { base64, mimeType, preview } = await fileToResizedJpeg(files[i]);
-        const resp = await fetch('/api/scan-test', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            imageBase64: base64,
-            mimeType,
-            questions: state.q.map((q, idx) => ({
-              number: idx + 1,
-              type: q.type,
-              max: q.max,
-            })),
-            students: state.students,
-          }),
+        const encoded = await fileToResizedJpeg(files[i], MAX_TOTAL_BASE64_BYTES);
+        const result = await callScanApi([encoded]);
+        const si = matchStudentIndex(result.studentName, state.students);
+        const fallbackVariant =
+          si >= 0 ? getStudentVariant(state, state.students[si]) : ('A' as VariantId);
+        const variant = result.variant ?? fallbackVariant;
+        added.push({
+          ok: true,
+          name: files[i].name,
+          key,
+          done: false,
+          previews: [encoded.preview],
+          detectedName: result.studentName,
+          detectedVariant: result.variant,
+          variant,
+          si,
+          answers: result.answers,
         });
-        const data = (await resp.json()) as {
-          ok?: boolean;
-          error?: string;
-          studentName?: string | null;
-          answers?: TestPaperAnswerItem[];
-        };
-        if (!resp.ok || !data.ok || !Array.isArray(data.answers)) {
-          added.push({
-            ok: false,
-            name: files[i].name,
-            key,
-            done: false,
-            error: data.error || 'Test vərəqi oxunmadı.',
-          });
-        } else {
-          const detectedName = data.studentName || null;
-          const si = matchStudentIndex(detectedName, state.students);
-          added.push({
-            ok: true,
-            name: files[i].name,
-            key,
-            done: false,
-            preview,
-            detectedName,
-            si,
-            answers: data.answers,
-          });
-        }
-      } catch {
+      } catch (err) {
+        const errMsg =
+          err instanceof Error && err.message
+            ? err.message
+            : 'Şəkil yüklənərkən və ya oxunarkən xəta baş verdi.';
         added.push({
           ok: false,
           name: files[i].name,
           key,
           done: false,
-          error: 'Şəkil yüklənərkən və ya oxunarkən xəta baş verdi.',
+          error: errMsg,
         });
       }
     }
     setStatus('');
     setBusy(false);
     onSetTestScans((prev) => [...prev, ...added]);
+  };
+
+  // Add 2nd/3rd page to an existing student card (e.g. mobile camera shooting one page at a time)
+  const handleAddPage = async (k: number, e: ChangeEvent<HTMLInputElement>) => {
+    const files = [...(e.target.files || [])];
+    e.target.value = '';
+    if (!files.length) return;
+
+    const target = testScans[k];
+    if (!target || !target.ok) return;
+
+    const file = files[0];
+    setBusy(true);
+    setStatus(' Əlavə səhifə oxunur…');
+    try {
+      const encoded = await fileToResizedJpeg(file, MAX_TOTAL_BASE64_BYTES);
+      const result = await callScanApi([encoded]);
+
+      onSetTestScans((prev) =>
+        prev.map((item, idx) => {
+          if (idx !== k || !item.ok) return item;
+          const nextSi =
+            item.si >= 0 ? item.si : matchStudentIndex(result.studentName, state.students);
+          const nextDetectedName = item.detectedName || result.studentName;
+          const nextDetectedVariant = item.detectedVariant || result.variant;
+          const nextVariant = item.detectedVariant
+            ? item.variant
+            : result.variant ?? item.variant;
+
+          return {
+            ...item,
+            done: false,
+            previews: [...item.previews, encoded.preview],
+            detectedName: nextDetectedName,
+            detectedVariant: nextDetectedVariant,
+            variant: nextVariant,
+            si: nextSi,
+            answers: mergeScanAnswers(item.answers, result.answers),
+          };
+        }),
+      );
+      onToast('Əlavə səhifənin cavabları birləşdirildi');
+    } catch (err) {
+      const errMsg =
+        err instanceof Error && err.message
+          ? err.message
+          : 'Əlavə səhifə oxunarkən xəta baş verdi.';
+      onToast(errMsg);
+    } finally {
+      setStatus('');
+      setBusy(false);
+    }
   };
 
   const handlePutOne = (k: number) => {
@@ -132,11 +411,12 @@ export function TestPaperScanCard({
     const w = onApplyTestPaperAnswers(
       n,
       s.answers.map((a) => a.value),
+      s.variant,
     );
     onSetTestScans((prev) =>
       prev.map((item, idx) => (idx === k && item.ok ? { ...item, done: true } : item)),
     );
-    onToast(`${n}: ${w} cavab yazıldı`);
+    onToast(`${n} (${s.variant} variantı): ${w} cavab yazıldı`);
   };
 
   const handlePutAll = () => {
@@ -154,6 +434,7 @@ export function TestPaperScanCard({
         onApplyTestPaperAnswers(
           n,
           s.answers.map((a) => a.value),
+          s.variant,
         );
         c++;
         return { ...s, done: true };
@@ -180,23 +461,34 @@ export function TestPaperScanCard({
     <div className="card">
       <h2>Test vərəqini skan et (cavab kartsız)</h2>
       <p className="hint">
-        Şagirdin cavab blankı olmadan birbaşa test vərəqinin üzərində işarələdiyi (dairəyə aldığı, altından xətt çəkdiyi və ya qeyd etdiyi) cavabların şəklini çəkib yükləyin. Proqram cavabları oxuyub “1. Açar” bölməsindəki düz cavablarla müqayisə edir: hansının düz, hansının səhv olduğunu və balı dərhal hesablayır.
+        Şagirdin birbaşa test vərəqinin üzərində işarələdiyi cavabların şəklini çəkib yükləyin. 2 səhifəlik test üçün qalereyadan 2 şəkli birlikdə seçə və ya 1-ci səhifəni çəkdikdən sonra kartdakı <b>“+ Səhifə əlavə et”</b> düyməsi ilə 2-ci səhifəni əlavə edə bilərsiniz. Proqram A/B variantını və düz-səhvləri avtomatik hesablayır.
       </p>
       {!hasAnyTestKey && (
         <div className="msg warn" style={{ marginBottom: 10 }}>
-          Əvvəlcə “1. Açar” bölməsində düzgün cavabları daxil edin ki, proqram düz və səhvləri hesablasın.
+          Əvvəlcə “1. Açar” bölməsində A və B variantlarının düzgün cavablarını daxil edin.
         </div>
       )}
       <div className="row" style={{ alignItems: 'center', gap: 8 }}>
         <label className="btn filebtn">
-          {busy ? 'Oxunur…' : 'Test şəklini seç / çək'}
+          {busy ? 'Oxunur…' : 'Test şəklini seç / çək (1–2+ səhifə)'}
           <input
             type="file"
             id="test-scan-in"
             accept="image/*"
             multiple
             disabled={busy}
-            onChange={handleFiles}
+            onChange={handleUnifiedStudentFiles}
+          />
+        </label>
+        <label className="btn ghost filebtn">
+          Toplu yüklə (hər şəkil 1 şagird)
+          <input
+            type="file"
+            id="test-scan-batch"
+            accept="image/*"
+            multiple
+            disabled={busy}
+            onChange={handleBatchFiles}
           />
         </label>
         {hasPending && (
@@ -238,18 +530,29 @@ export function TestPaperScanCard({
             state.q,
             s.answers.map((a) => a.value),
             state.scale,
+            s.variant,
           );
 
           const msgs: Array<[string, string]> = [];
           if (s.done) msgs.push(['ok', 'Cədvələ yazıldı.']);
-          if (s.detectedName) {
-            msgs.push(['', `Vərəqdə oxunan ad: ${s.detectedName}`]);
+          if (s.detectedName || s.detectedVariant) {
+            const parts = [
+              s.detectedName ? `Ad: ${s.detectedName}` : '',
+              s.detectedVariant ? `Variant: ${s.detectedVariant}` : '',
+            ].filter(Boolean);
+            msgs.push(['', `Vərəqdə oxunan — ${parts.join(' · ')}`]);
+          }
+          if (s.variant === 'B' && !state.q.some((q) => q.type === 'test' && Boolean(q.keyB))) {
+            msgs.push([
+              'warn',
+              'B variantı seçilib, lakin “1. Açar” bölməsində B variantının açarı boşdur.',
+            ]);
           }
           if (s.si < 0) {
             msgs.push(['warn', 'Şagird siyahıdan avtomatik tapılmadı – yuxarıdan seçin.']);
           }
           if (s.si >= 0 && used[s.si] > 1) {
-            msgs.push(['warn', 'Bu şagird üçün birdən çox test şəkli var.']);
+            msgs.push(['warn', 'Bu şagird üçün birdən çox test skan kartı var.']);
           }
           if (s.si >= 0 && hasData(state.ans, state.students[s.si]) && !s.done) {
             msgs.push(['warn', 'Bu şagirdin cədvəldə cavabları var – yazanda əvəz olunacaq.']);
@@ -263,35 +566,81 @@ export function TestPaperScanCard({
 
           return (
             <div className={`scan${s.done ? ' done' : ''}`} key={s.key}>
-              <img
-                src={s.preview}
-                alt={`test vərəqi ${s.name}`}
-                onClick={() => onZoomImage(s.preview)}
-              />
+              <div className={`scan-pages${s.previews.length > 1 ? ' multi' : ''}`}>
+                {s.previews.map((src, pIdx) =>
+                  src ? (
+                    <div className="scan-page-thumb" key={pIdx}>
+                      <img
+                        src={src}
+                        alt={`test vərəqi ${s.name} səhifə ${pIdx + 1}`}
+                        onClick={() => onZoomImage(src)}
+                      />
+                      {s.previews.length > 1 && (
+                        <span className="scan-page-badge">Səhifə {pIdx + 1}</span>
+                      )}
+                    </div>
+                  ) : (
+                    <div
+                      key={pIdx}
+                      className="hint scan-page-placeholder"
+                    >
+                      Səhifə {pIdx + 1} (önizləmə yoxdur)
+                    </div>
+                  ),
+                )}
+              </div>
+
               <div className="body">
-                <label className="f" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  Şagird
-                  <select
-                    aria-label={`Test skanı ${k + 1} şagird`}
-                    className="ksq-select"
-                    value={s.si}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      onSetTestScans((prev) =>
-                        prev.map((item, idx) =>
-                          idx === k && item.ok ? { ...item, si: val, manual: true } : item,
-                        ),
-                      );
-                    }}
-                  >
-                    <option value={-1}>— şagirdi seçin —</option>
-                    {state.students.map((n, i) => (
-                      <option key={i} value={i}>
-                        {i + 1}. {n}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <div className="row" style={{ alignItems: 'center', gap: 10 }}>
+                  <label className="f" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    Şagird
+                    <select
+                      aria-label={`Test skanı ${k + 1} şagird`}
+                      className="ksq-select"
+                      value={s.si}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        onSetTestScans((prev) =>
+                          prev.map((item, idx) => {
+                            if (idx !== k || !item.ok) return item;
+                            const nextVariant =
+                              !item.detectedVariant && val >= 0
+                                ? getStudentVariant(state, state.students[val])
+                                : item.variant;
+                            return { ...item, si: val, manual: true, variant: nextVariant };
+                          }),
+                        );
+                      }}
+                    >
+                      <option value={-1}>— şagirdi seçin —</option>
+                      {state.students.map((n, i) => (
+                        <option key={i} value={i}>
+                          {i + 1}. {n}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="f" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    Variant
+                    <select
+                      aria-label={`Test skanı ${k + 1} variant`}
+                      className="ksq-select"
+                      value={s.variant}
+                      onChange={(e) => {
+                        const v = (e.target.value === 'B' ? 'B' : 'A') as VariantId;
+                        onSetTestScans((prev) =>
+                          prev.map((item, idx) =>
+                            idx === k && item.ok ? { ...item, variant: v } : item,
+                          ),
+                        );
+                      }}
+                    >
+                      <option value="A">A variantı</option>
+                      <option value="B">B variantı</option>
+                    </select>
+                  </label>
+                </div>
 
                 <div className="scan-summary">
                   <span className="tag ok">{summary.correctCount} düz</span>
@@ -309,6 +658,7 @@ export function TestPaperScanCard({
                   {state.q.map((qDef, i) => {
                     const ansItem = s.answers[i] ?? { value: '', confidence: 'low', note: '' };
                     const itemSummary = summary.items[i];
+                    const qKey = getQuestionKey(qDef, s.variant);
                     let cls = '';
                     if (ansItem.confidence === 'low' && ansItem.value === '') {
                       cls = 'fl';
@@ -358,8 +708,8 @@ export function TestPaperScanCard({
                         >
                           {qDef.type === 'test'
                             ? itemSummary?.status === 'wrong'
-                              ? `→${qDef.key}`
-                              : qDef.key || '?'
+                              ? `→${qKey || '?'}`
+                              : qKey || '?'
                             : `≤${qDef.max}`}
                         </span>
                       </label>
@@ -377,6 +727,17 @@ export function TestPaperScanCard({
                   <button type="button" className="btn small" onClick={() => handlePutOne(k)}>
                     Cədvələ yaz
                   </button>
+                  {s.previews.length < MAX_PAGES_PER_STUDENT && (
+                    <label className="btn ghost small filebtn">
+                      + Səhifə əlavə et
+                      <input
+                        type="file"
+                        accept="image/*"
+                        disabled={busy}
+                        onChange={(e) => handleAddPage(k, e)}
+                      />
+                    </label>
+                  )}
                   <button
                     type="button"
                     className="btn ghost small"

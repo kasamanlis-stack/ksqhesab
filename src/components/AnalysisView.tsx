@@ -85,7 +85,13 @@ export function AnalysisView({ state, onCopyText, onResetAll }: AnalysisViewProp
                   </td>
                   <td>{s.q.type === 'test' ? 'Test' : 'Açıq'}</td>
                   <td style={{ textAlign: 'left' }}>{s.q.topic || '–'}</td>
-                  <td>{s.q.type === 'test' ? s.q.key || '?' : `≤${s.q.max}`}</td>
+                  <td>
+                    {s.q.type === 'test'
+                      ? s.q.keyB
+                        ? `A:${s.q.key || '?'} · B:${s.q.keyB}`
+                        : s.q.key || '?'
+                      : `≤${s.q.max}`}
+                  </td>
                   <td>
                     <b>{fmt(s.rate)}%</b>
                   </td>

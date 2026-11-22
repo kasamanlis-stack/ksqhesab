@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent } from 'react';
-import type { KsqState, ScanItem, TestPaperScanItem } from '../types/ksq';
-import { cellState, fmt, hasData, scoreOf } from '../utils/ksq';
+import type { KsqState, ScanItem, TestPaperScanItem, VariantId } from '../types/ksq';
+import { cellState, fmt, getStudentVariant, hasData, scoreOf } from '../utils/ksq';
 import { OMR } from '../utils/omr';
 import { TestPaperScanCard } from './TestPaperScanCard';
 
@@ -12,8 +12,9 @@ interface AnswersViewProps {
   testScans: TestPaperScanItem[];
   onSetTestScans: React.Dispatch<React.SetStateAction<TestPaperScanItem[]>>;
   onAnswerChange: (studentName: string, qIndex: number, value: string) => void;
-  onApplyScanAnswers: (studentName: string, answers: string[]) => number;
-  onApplyTestPaperAnswers: (studentName: string, answers: string[]) => number;
+  onStudentVariantChange: (studentName: string, variant: VariantId) => void;
+  onApplyScanAnswers: (studentName: string, answers: string[], variant?: VariantId) => number;
+  onApplyTestPaperAnswers: (studentName: string, answers: string[], variant: VariantId) => number;
   onZoomImage: (src: string) => void;
   onToast: (message: string) => void;
 }
@@ -25,6 +26,7 @@ export function AnswersView({
   testScans,
   onSetTestScans,
   onAnswerChange,
+  onStudentVariantChange,
   onApplyScanAnswers,
   onApplyTestPaperAnswers,
   onZoomImage,
@@ -57,12 +59,15 @@ export function AnswersView({
       const key = `${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`;
       if (res.ok) {
         const si = res.id && res.id <= state.students.length ? res.id - 1 : -1;
+        const variant: VariantId =
+          si >= 0 ? getStudentVariant(state, state.students[si]) : 'A';
         added.push({
           ...res,
           name: files[i].name,
           key,
           done: false,
           si,
+          variant,
         });
       } else {
         added.push({
@@ -85,12 +90,14 @@ export function AnswersView({
       return { written: false };
     }
     const n = state.students[s.si];
+    const variant: VariantId = s.variant ?? getStudentVariant(state, n);
     const w = onApplyScanAnswers(
       n,
       s.answers.map((a) => a.v),
+      variant,
     );
-    onToast(`${n}: ${w} cavab yazıldı`);
-    return { written: true, updated: { ...s, done: true } };
+    onToast(`${n} (${variant} variantı): ${w} cavab yazıldı`);
+    return { written: true, updated: { ...s, done: true, variant } };
   };
 
   const handlePutOne = (k: number) => {
@@ -112,12 +119,14 @@ export function AnswersView({
       const clean = s.si >= 0 && cnt[s.si] === 1 && (s.manual || !s.idFlag);
       if (clean) {
         const n = state.students[s.si];
+        const variant: VariantId = s.variant ?? getStudentVariant(state, n);
         onApplyScanAnswers(
           n,
           s.answers.map((a) => a.v),
+          variant,
         );
         c++;
-        return { ...s, done: true };
+        return { ...s, done: true, variant };
       } else {
         skip++;
         return s;
@@ -137,6 +146,7 @@ export function AnswersView({
 
   const hasPendingScans = scans.some((s) => s.ok && !s.done);
   const qCount = state.q.length;
+  const hasAnyKeyB = state.q.some((q) => q.type === 'test' && Boolean(q.keyB));
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>, idx: number) => {
     if (e.key === 'Enter' && inputRefs.current[idx + 1]) {
@@ -209,6 +219,9 @@ export function AnswersView({
               );
             }
 
+            const scanVariant: VariantId =
+              s.variant ?? (s.si >= 0 ? getStudentVariant(state, state.students[s.si]) : 'A');
+
             const msgs: Array<[string, string]> = [];
             if (s.done) msgs.push(['ok', 'Cədvələ yazıldı.']);
             if (s.id === null) msgs.push(['bad', 'Şagird nömrəsi oxunmadı – siyahıdan seçin.']);
@@ -240,28 +253,58 @@ export function AnswersView({
                   onClick={() => onZoomImage(s.preview)}
                 />
                 <div className="body">
-                  <label className="f" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    Şagird
-                    <select
-                      className="ksq-select"
-                      value={s.si}
-                      onChange={(e) => {
-                        const val = Number(e.target.value);
-                        onSetScans((prev) =>
-                          prev.map((item, idx) =>
-                            idx === k && item.ok ? { ...item, si: val, manual: true } : item,
-                          ),
-                        );
-                      }}
-                    >
-                      <option value={-1}>— şagirdi seçin —</option>
-                      {state.students.map((n, i) => (
-                        <option key={i} value={i}>
-                          {i + 1}. {n}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <div className="row" style={{ alignItems: 'center', gap: 10 }}>
+                    <label className="f" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      Şagird
+                      <select
+                        className="ksq-select"
+                        value={s.si}
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          onSetScans((prev) =>
+                            prev.map((item, idx) =>
+                              idx === k && item.ok
+                                ? {
+                                    ...item,
+                                    si: val,
+                                    manual: true,
+                                    variant:
+                                      item.variant ??
+                                      (val >= 0 ? getStudentVariant(state, state.students[val]) : 'A'),
+                                  }
+                                : item,
+                            ),
+                          );
+                        }}
+                      >
+                        <option value={-1}>— şagirdi seçin —</option>
+                        {state.students.map((n, i) => (
+                          <option key={i} value={i}>
+                            {i + 1}. {n}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="f" style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      Variant
+                      <select
+                        aria-label={`OMR blank ${k + 1} variant`}
+                        className="ksq-select"
+                        value={scanVariant}
+                        onChange={(e) => {
+                          const v = (e.target.value === 'B' ? 'B' : 'A') as VariantId;
+                          onSetScans((prev) =>
+                            prev.map((item, idx) =>
+                              idx === k && item.ok ? { ...item, variant: v } : item,
+                            ),
+                          );
+                        }}
+                      >
+                        <option value="A">A variantı</option>
+                        <option value="B">B variantı</option>
+                      </select>
+                    </label>
+                  </div>
                   <div className="qs">
                     {s.answers.map((a, i) => (
                       <label key={i}>
@@ -317,7 +360,7 @@ export function AnswersView({
       <div className="card">
         <h2>Şagird cavabları</h2>
         <p className="hint">
-          Test sualına şagirdin seçdiyi hərfi, açıq suala aldığı balı yazın. Boş xana cavab verilməmiş sayılır. Xanalar dərhal rənglənir. Enter növbəti xanaya keçirir.
+          Hər şagird üçün A və ya B variantını seçin, test sualına şagirdin seçdiyi hərfi, açıq suala aldığı balı yazın. Boş xana cavab verilməmiş sayılır. Xanalar seçilmiş varianta görə dərhal rənglənir. Enter növbəti xanaya keçirir.
         </p>
         <div className="tw" style={{ maxHeight: '70vh' }}>
           <table id="t-ans" className="ksq-table">
@@ -332,12 +375,17 @@ export function AnswersView({
                 <thead>
                   <tr>
                     <th className="name">Şagird</th>
+                    <th>Var.</th>
                     {state.q.map((q, i) => (
                       <th key={i}>
                         {i + 1}
                         <br />
                         <span style={{ fontWeight: 400, color: 'var(--muted)' }}>
-                          {q.type === 'test' ? q.key || '?' : `≤${q.max}`}
+                          {q.type === 'test'
+                            ? hasAnyKeyB && q.keyB
+                              ? `A:${q.key || '?'} / B:${q.keyB}`
+                              : q.key || '?'
+                            : `≤${q.max}`}
                         </span>
                       </th>
                     ))}
@@ -347,17 +395,34 @@ export function AnswersView({
                 <tbody>
                   {state.students.map((n, si) => {
                     const a = state.ans[n] || [];
+                    const variant = getStudentVariant(state, n);
                     const pts = scoreOf(state, n).pts;
                     return (
                       <tr key={`${si}-${n}`}>
                         <td className="name">
                           {si + 1}. {n}
                         </td>
+                        <td>
+                          <select
+                            aria-label={`${n} variant`}
+                            className="var-select"
+                            value={variant}
+                            onChange={(e) =>
+                              onStudentVariantChange(
+                                n,
+                                (e.target.value === 'B' ? 'B' : 'A') as VariantId,
+                              )
+                            }
+                          >
+                            <option value="A">A</option>
+                            <option value="B">B</option>
+                          </select>
+                        </td>
                         {state.q.map((q, qi) => {
                           const v = a[qi] ?? '';
                           const idx = si * qCount + qi;
                           return (
-                            <td key={qi} className={cellState(q, v)}>
+                            <td key={qi} className={cellState(q, v, variant)}>
                               <input
                                 ref={(el) => {
                                   inputRefs.current[idx] = el;

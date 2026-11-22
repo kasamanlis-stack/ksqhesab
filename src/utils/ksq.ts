@@ -6,13 +6,14 @@ import type {
   Question,
   QuestionStat,
   StudentScore,
+  VariantId,
 } from '../types/ksq';
 
 export const LETTERS = ['A', 'B', 'C', 'D', 'E'] as const;
 export const STORAGE_KEY = 'ksq-hesablayici-v1';
 
 export function blankQ(): Question {
-  return { type: 'test', key: '', max: 1, topic: '' };
+  return { type: 'test', key: '', keyB: '', max: 1, topic: '' };
 }
 
 export function createInitialState(): KsqState {
@@ -26,6 +27,7 @@ export function createInitialState(): KsqState {
     q,
     students: [],
     ans: {},
+    studentVariants: {},
   };
 }
 
@@ -45,7 +47,10 @@ export function loadState(): KsqState {
     for (let i = 0; i < 16; i++) {
       base.q.push(blankQ());
     }
+  } else {
+    base.q = base.q.map((item) => ({ ...item, keyB: item.keyB ?? '' }));
   }
+  base.studentVariants = base.studentVariants || {};
   return base;
 }
 
@@ -53,9 +58,29 @@ export function fmt(x: number): string {
   return (Math.round(x * 10) / 10).toString().replace('.', ',');
 }
 
-export function cellState(q: Question, v: string | undefined): CellState {
+export function getStudentVariant(state: KsqState, studentName: string): VariantId {
+  return state.studentVariants?.[studentName] === 'B' ? 'B' : 'A';
+}
+
+export function getQuestionKey(q: Question, variant: VariantId = 'A'): string {
+  return (variant === 'B' ? q.keyB ?? '' : q.key) || '';
+}
+
+export function resolveQuestionForVariant(q: Question, variant: VariantId = 'A'): Question {
+  if (variant === 'B') {
+    return { ...q, key: q.keyB ?? '' };
+  }
+  return q;
+}
+
+export function cellState(
+  q: Question,
+  v: string | undefined,
+  variant: VariantId = 'A',
+): CellState {
   if (v === undefined || v === '') return '';
-  if (q.type === 'test') return v === q.key ? 'c' : 'x';
+  const key = getQuestionKey(q, variant);
+  if (q.type === 'test') return v === key ? 'c' : 'x';
   const n = Number(v);
   if (Number.isNaN(n)) return '';
   if (n >= q.max && q.max > 0) return 'c';
@@ -67,9 +92,10 @@ export function maxTotal(questions: Question[]): number {
   return questions.reduce((s, q) => s + (Number(q.max) || 0), 0);
 }
 
-export function qPts(q: Question, v: string | undefined): number {
+export function qPts(q: Question, v: string | undefined, variant: VariantId = 'A'): number {
   if (v === undefined || v === '') return 0;
-  if (q.type === 'test') return v === q.key ? Number(q.max) || 0 : 0;
+  const key = getQuestionKey(q, variant);
+  if (q.type === 'test') return v === key ? Number(q.max) || 0 : 0;
   return Math.min(Number(v) || 0, Number(q.max) || 0);
 }
 
@@ -80,15 +106,16 @@ export function gradeOf(p: number, scale: GradeScale): 2 | 3 | 4 | 5 {
 
 export function scoreOf(state: KsqState, studentName: string): StudentScore {
   const a = state.ans[studentName] || [];
+  const variant = getStudentVariant(state, studentName);
   let pts = 0;
   let correct = 0;
   let answered = 0;
   state.q.forEach((q, i) => {
     const v = a[i];
     if (v !== undefined && v !== '') answered++;
-    const p = qPts(q, v);
+    const p = qPts(q, v, variant);
     pts += p;
-    if (q.type === 'test' && v === q.key) correct++;
+    if (q.type === 'test' && v === getQuestionKey(q, variant)) correct++;
   });
   const mt = maxTotal(state.q);
   const pct = mt ? (pts / mt) * 100 : 0;
@@ -147,22 +174,25 @@ export function qStats(state: KsqState): QuestionStat[] {
     let cnt = 0;
     let blank = 0;
     const opts: Record<string, number> = {};
+    const wrongOpts: Record<string, number> = {};
     ps.forEach((n) => {
+      const variant = getStudentVariant(state, n);
       const v = (state.ans[n] || [])[i];
       if (v === undefined || v === '') {
         blank++;
       } else if (q.type === 'test') {
         opts[v] = (opts[v] || 0) + 1;
+        if (v !== getQuestionKey(q, variant)) {
+          wrongOpts[v] = (wrongOpts[v] || 0) + 1;
+        }
       }
-      got += qPts(q, v);
+      got += qPts(q, v, variant);
       cnt++;
     });
     const rate = cnt && q.max ? (got / (cnt * q.max)) * 100 : 0;
     let wrong = '';
     if (q.type === 'test') {
-      const w = Object.entries(opts)
-        .filter(([k]) => k !== q.key)
-        .sort((a, b) => b[1] - a[1])[0];
+      const w = Object.entries(wrongOpts).sort((a, b) => b[1] - a[1])[0];
       if (w) wrong = `${w[0]} (${w[1]})`;
     }
     return { i, q, rate, blank, opts, wrong, cnt };
@@ -232,13 +262,18 @@ export function parseStudentLines(text: string): string[] {
 
 export function buildResultsTsv(state: KsqState): string {
   const nt = state.q.filter((q) => q.type === 'test').length;
-  const lines = [['№', 'Şagird', ...(nt ? ['Düzgün test'] : []), 'Bal', 'Faiz', 'Qiymət'].join('\t')];
+  const lines = [
+    ['№', 'Şagird', 'Variant', ...(nt ? ['Düzgün test'] : []), 'Bal', 'Faiz', 'Qiymət'].join('\t'),
+  ];
   state.students.forEach((n, i) => {
     const r = scoreOf(state, n);
+    const v = getStudentVariant(state, n);
     lines.push(
       hasData(state.ans, n)
-        ? [i + 1, n, ...(nt ? [`${r.correct}/${nt}`] : []), fmt(r.pts), `${fmt(r.pct)}%`, r.grade].join('\t')
-        : [i + 1, n, ...(nt ? ['–'] : []), '–', '–', 'iştirak etməyib'].join('\t'),
+        ? [i + 1, n, v, ...(nt ? [`${r.correct}/${nt}`] : []), fmt(r.pts), `${fmt(r.pct)}%`, r.grade].join(
+            '\t',
+          )
+        : [i + 1, n, v, ...(nt ? ['–'] : []), '–', '–', 'iştirak etməyib'].join('\t'),
     );
   });
   return lines.join('\n');
@@ -246,16 +281,38 @@ export function buildResultsTsv(state: KsqState): string {
 
 export function buildResultsCsv(state: KsqState): string {
   const nt = state.q.filter((q) => q.type === 'test').length;
-  const head = ['№', 'Şagird', ...state.q.map((_, i) => 'S' + (i + 1)), ...(nt ? ['Düzgün test'] : []), 'Bal', 'Faiz', 'Qiymət'];
+  const head = [
+    '№',
+    'Şagird',
+    'Variant',
+    ...state.q.map((_, i) => 'S' + (i + 1)),
+    ...(nt ? ['Düzgün test'] : []),
+    'Bal',
+    'Faiz',
+    'Qiymət',
+  ];
   const rows: Array<Array<string | number>> = [head];
   state.students.forEach((n, i) => {
     const r = scoreOf(state, n);
+    const v = getStudentVariant(state, n);
     const a = state.ans[n] || [];
     rows.push(
       hasData(state.ans, n)
-        ? [i + 1, n, ...state.q.map((_, qi) => a[qi] ?? ''), ...(nt ? [r.correct] : []), fmt(r.pts), fmt(r.pct), r.grade]
-        : [i + 1, n, ...state.q.map(() => ''), ...(nt ? [''] : []), '', '', 'iştirak etməyib'],
+        ? [
+            i + 1,
+            n,
+            v,
+            ...state.q.map((_, qi) => a[qi] ?? ''),
+            ...(nt ? [r.correct] : []),
+            fmt(r.pts),
+            fmt(r.pct),
+            r.grade,
+          ]
+        : [i + 1, n, v, ...state.q.map(() => ''), ...(nt ? [''] : []), '', '', 'iştirak etməyib'],
     );
   });
-  return '\ufeff' + rows.map((r) => r.map((v) => '"' + String(v).replace(/"/g, '""') + '"').join(';')).join('\r\n');
+  return (
+    '\ufeff' +
+    rows.map((r) => r.map((v) => '"' + String(v).replace(/"/g, '""') + '"').join(';')).join('\r\n')
+  );
 }

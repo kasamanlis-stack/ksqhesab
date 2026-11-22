@@ -11,6 +11,7 @@ import type {
   Question,
   ScanItem,
   TestPaperScanItem,
+  VariantId,
   ViewId,
 } from './types/ksq';
 import {
@@ -163,12 +164,12 @@ export default function App() {
     }));
   };
 
-  const handleApplyQuickKey = (rawKey: string) => {
+  const handleApplyQuickKey = (rawKey: string, variant: VariantId = 'A') => {
     const s = rawKey.toUpperCase().replace(/[^A-E]/g, '');
     let k = 0;
     const nextQ = state.q.map((q) => {
       if (q.type === 'test' && k < s.length) {
-        return { ...q, key: s[k++] };
+        return variant === 'B' ? { ...q, keyB: s[k++] } : { ...q, key: s[k++] };
       }
       return q;
     });
@@ -176,19 +177,31 @@ export default function App() {
       ...prev,
       q: nextQ,
     }));
-    toast(`${k} test sualına açar yazıldı`);
+    toast(`${variant} variantı: ${k} test sualına açar yazıldı`);
   };
 
   const handleApplyStudents = (rawText: string) => {
     const names = parseStudentLines(rawText);
     updateState((prev) => {
       const na: Record<string, string[]> = {};
+      const nv: Record<string, VariantId> = {};
       names.forEach((n) => {
         if (prev.ans[n]) na[n] = prev.ans[n];
+        if (prev.studentVariants?.[n]) nv[n] = prev.studentVariants[n];
       });
-      return { ...prev, students: names, ans: na };
+      return { ...prev, students: names, ans: na, studentVariants: nv };
     });
     toast(`${names.length} şagird yadda saxlandı`);
+  };
+
+  const handleStudentVariantChange = (studentName: string, variant: VariantId) => {
+    updateState((prev) => ({
+      ...prev,
+      studentVariants: {
+        ...(prev.studentVariants || {}),
+        [studentName]: variant,
+      },
+    }));
   };
 
   const handleAnswerChange = (studentName: string, qIndex: number, value: string) => {
@@ -205,7 +218,11 @@ export default function App() {
     });
   };
 
-  const handleApplyScanAnswers = (studentName: string, scanAnswers: string[]): number => {
+  const handleApplyScanAnswers = (
+    studentName: string,
+    scanAnswers: string[],
+    variant?: VariantId,
+  ): number => {
     let written = 0;
     stateRef.current.q.forEach((q, i) => {
       if (i < scanAnswers.length && q.type === 'test') {
@@ -219,18 +236,27 @@ export default function App() {
           nextAns[i] = v;
         }
       });
+      const nextVariants =
+        variant !== undefined
+          ? { ...(prev.studentVariants || {}), [studentName]: variant }
+          : prev.studentVariants;
       return {
         ...prev,
         ans: {
           ...prev.ans,
           [studentName]: nextAns,
         },
+        studentVariants: nextVariants,
       };
     });
     return written;
   };
 
-  const handleApplyTestPaperAnswers = (studentName: string, values: string[]): number => {
+  const handleApplyTestPaperAnswers = (
+    studentName: string,
+    values: string[],
+    variant: VariantId = 'A',
+  ): number => {
     let written = 0;
     stateRef.current.q.forEach((_, i) => {
       if (i < values.length && values[i] !== '') {
@@ -249,6 +275,10 @@ export default function App() {
         ans: {
           ...prev.ans,
           [studentName]: nextAns,
+        },
+        studentVariants: {
+          ...(prev.studentVariants || {}),
+          [studentName]: variant,
         },
       };
     });
@@ -319,6 +349,7 @@ export default function App() {
             testScans={testScans}
             onSetTestScans={setTestScans}
             onAnswerChange={handleAnswerChange}
+            onStudentVariantChange={handleStudentVariantChange}
             onApplyScanAnswers={handleApplyScanAnswers}
             onApplyTestPaperAnswers={handleApplyTestPaperAnswers}
             onZoomImage={(src) => setZoomSrc(src)}
