@@ -41,8 +41,15 @@ interface ApiResponse extends ServerResponse {
   json?: (data: unknown) => void;
 }
 
+export const maxDuration = 60;
+
 function getAiClient(): GoogleGenAI {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const rawKey =
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    '';
+  const apiKey = rawKey.trim().replace(/^["']|["']$/g, '');
   if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
     throw new Error('GEMINI_API_KEY_MISSING');
   }
